@@ -1,0 +1,6 @@
+fastapi[all]==0.88.0
+tortoise-orm[asyncpg]==0.19.2
+
+passlib==1.7.4
+PyJWT==2.6.0
+cryptography==39.0.0
