@@ -60,15 +60,15 @@ class AuthConsumer:
             schema: str = 'bearer'
     ) -> Callable[[Any], _Token]:
         assert cookie or header
-        _cookie, _header = Cookie(alias='Token'), Header(alias='Token')
+        _cookie, _header = Cookie(default=None, alias='Token'), Header(default=None, alias='Token')
         if cookie and header:
-            def wrapper(cookie_token: Optional[str] = _cookie, header_token: Optional[str] = _header) -> _Token:
+            def wrapper(cookie_token: str = _cookie, header_token: str = _header) -> _Token:
                 return self._get_user_auth(cookie_token or header_token, schema=schema)
         elif cookie:
-            def wrapper(cookie_token: Optional[str] = _cookie) -> _Token:
+            def wrapper(cookie_token: str = _cookie) -> _Token:
                 return self._get_user_auth(cookie_token, schema=schema)
         else:
-            def wrapper(header_token: Optional[str] = _header) -> _Token:
+            def wrapper(header_token: str = _header) -> _Token:
                 return self._get_user_auth(header_token, schema=schema)
         return wrapper
 
