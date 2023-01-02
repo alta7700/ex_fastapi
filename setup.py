@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 version = '0.1.0'
 
@@ -10,7 +10,7 @@ setup(
     author='alta7700',
     author_email='alta7700@mail.ru',
 
-    packages=['ex_fastapi'],
+    packages=find_packages(),
 
     install_requires=[
         'fastapi[all]>=0.88.0',
