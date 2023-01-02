@@ -92,7 +92,7 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
     async def create(self, data: SCHEMA, exclude: set[str] = None, *args, **kwargs) -> TORTOISE_MODEL:
         instance: TORTOISE_MODEL = self.model(**data.dict(exclude=exclude), **kwargs)
         if not_unique_fields := await instance.check_unique():
-            raise NotUnique(not_unique_fields)
+            raise NotUnique(fields=not_unique_fields)
         await instance.save(force_create=True)
         return instance
 
