@@ -10,7 +10,7 @@ setup(
     author='alta7700',
     author_email='alta7700@mail.ru',
 
-    packages=['ex_fastapi.*'],
+    packages=['ex_fastapi'],
 
     install_requires=[
         'fastapi[all]>=0.88.0',
