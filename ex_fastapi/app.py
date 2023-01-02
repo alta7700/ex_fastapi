@@ -24,7 +24,7 @@ class ExFastAPI(FastAPI):
                 case 'tortoise':
                     from .contrib import tortoise
                     db_on_start = tortoise.on_start(config=db_config)
-                    db_on_shutdown = tortoise.on_shutdown()
+                    db_on_shutdown = tortoise.on_shutdown
                 case _:
                     raise Exception(f'Unknown {db_provider=}')
             if db_on_start:
