@@ -1,6 +1,7 @@
+from collections.abc import Callable
 from typing import Any, Optional, Type
 
-from fastapi import Cookie
+from fastapi import Cookie, Header
 from jwt import InvalidSignatureError, ExpiredSignatureError, DecodeError
 
 from ex_fastapi import CamelModel
@@ -52,7 +53,26 @@ class AuthConsumer:
             raise AuthErrors.not_authenticated.err()
         return self.parse_token(token)
 
-    def get_user_auth(self, token: Optional[str] = Cookie(default=None, alias='Token')) -> _Token:
+    def get_user_auth(
+            self,
+            cookie: bool = False,
+            header: bool = False,
+            schema: str = 'bearer'
+    ) -> Callable[[Any], _Token]:
+        assert cookie or header
+        _cookie, _header = Cookie(alias='Token'), Header(alias='Token')
+        if cookie and header:
+            def wrapper(cookie_token: Optional[str] = _cookie, header_token: Optional[str] = _header) -> _Token:
+                return self._get_user_auth(cookie_token or header_token, schema=schema)
+        elif cookie:
+            def wrapper(cookie_token: Optional[str] = _cookie) -> _Token:
+                return self._get_user_auth(cookie_token, schema=schema)
+        else:
+            def wrapper(header_token: Optional[str] = _header) -> _Token:
+                return self._get_user_auth(header_token, schema=schema)
+        return wrapper
+
+    def _get_user_auth(self, token: str, schema: str = 'bearer'):
         if token is None:
             raise AuthErrors.not_authenticated.err()
-        return self.get_auth('bearer', token)
+        return self.get_auth(schema, token)
