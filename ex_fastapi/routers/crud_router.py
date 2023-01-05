@@ -7,7 +7,7 @@ from fastapi import Response, APIRouter, Body, Path, Query, params
 from ex_fastapi.default_response import BgHTTPException
 from ex_fastapi import BaseCodes, snake_case, CommaSeparatedOf
 from .base_crud_service import BaseCRUDService, SCHEMA
-from .exceptions import NotUnique
+from .exceptions import NotUnique, ItemNotFound
 from .utils import pagination_factory, PAGINATION
 
 DISPLAY_FIELDS = tuple[str, ...]
@@ -21,15 +21,6 @@ class DefaultCodes(BaseCodes):
 
 
 ROUTE = Literal['get_all', 'get_many', 'get_one', 'create', 'edit', 'delete_all', 'delete_many', 'delete_one']
-
-
-class ItemNotFound(Exception):
-    pass
-
-
-
-
-
 DEPENDENCIES = Optional[Sequence[params.Depends]]
 
 

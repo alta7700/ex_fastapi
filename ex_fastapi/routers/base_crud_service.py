@@ -2,6 +2,7 @@ from typing import Type, Any, TypeVar, Generic, Optional
 from uuid import UUID
 
 from ex_fastapi.pydantic import CamelModel
+from .exceptions import NotUnique
 
 
 PK = TypeVar('PK', int, UUID)
@@ -40,22 +41,22 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
     ) -> tuple[list[DB_MODEL], int]:
         raise NotImplementedError()
 
-    async def get_many(self, item_ids: list[PK], *args, **kwargs) -> list[DB_MODEL]:
+    async def get_many(self, item_ids: list[PK], **kwargs) -> list[DB_MODEL]:
         raise NotImplementedError()
 
-    async def get_one(self, item_id: PK, *args, **kwargs) -> DB_MODEL:
+    async def get_one(self, item_id: PK, **kwargs) -> DB_MODEL:
         raise NotImplementedError()
 
-    async def create(self, data: SCHEMA, *args, **kwargs) -> DB_MODEL:
+    async def create(self, data: SCHEMA, **kwargs) -> DB_MODEL:
         raise NotImplementedError()
 
-    async def edit(self, item_id: PK, data: SCHEMA, *args, **kwargs) -> DB_MODEL:
+    async def edit(self, item_id: PK, data: SCHEMA, **kwargs) -> DB_MODEL:
         raise NotImplementedError()
 
-    async def delete_many(self, item_ids: list[PK], *args, **kwargs) -> int:
+    async def delete_many(self, item_ids: list[PK], **kwargs) -> int:
         raise NotImplementedError()
 
-    async def delete_one(self, item_id: PK, *args, **kwargs) -> None:
+    async def delete_one(self, item_id: PK, **kwargs) -> None:
         raise NotImplementedError()
 
     async def check_unique(self, data: dict[str]) -> list[str]:

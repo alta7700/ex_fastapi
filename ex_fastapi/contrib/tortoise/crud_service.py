@@ -7,7 +7,7 @@ from tortoise.transactions import in_transaction
 
 from . import Model
 from ex_fastapi.routers.base_crud_service import BaseCRUDService, PK, SCHEMA
-from ex_fastapi.routers.crud_router import ItemNotFound
+from ex_fastapi.routers.exceptions import ItemNotFound
 
 
 TORTOISE_MODEL = TypeVar('TORTOISE_MODEL', bound=Model)
@@ -80,33 +80,51 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
     def _get_many_queryset(self, item_ids: list[PK]) -> QuerySet[TORTOISE_MODEL]:
         return self.get_queryset().filter(**{f'{self._pk}__in': item_ids})
 
-    async def get_many(self, item_ids: list[PK], *args, **kwargs) -> list[TORTOISE_MODEL]:
+    async def get_many(self, item_ids: list[PK], **kwargs) -> list[TORTOISE_MODEL]:
         return await self._get_many_queryset(item_ids)
 
-    async def get_one(self, item_id: PK, *args, **kwargs) -> Optional[TORTOISE_MODEL]:
-        item = await self.get_queryset().get_or_none(**{self._pk: item_id})
-        if item is None:
-            raise ItemNotFound
-        return item
+    async def get_one(self, item_id: PK, **kwargs) -> Optional[TORTOISE_MODEL]:
+        instance = await self.get_queryset().get_or_none(**{self._pk: item_id})
+        if instance is None:
+            raise ItemNotFound()
+        return instance
 
-    async def create(self, data: SCHEMA, exclude: set[str] = None, *args, **kwargs) -> TORTOISE_MODEL:
-        await self.raise_if_not_unique(data.dict())
-        instance: TORTOISE_MODEL = self.model(**data.dict(exclude=exclude), **kwargs)
+    async def create(
+            self,
+            data: SCHEMA,
+            *,
+            exclude: set[str] = None,
+            check_unique: bool = True,
+            **kwargs
+    ) -> TORTOISE_MODEL:
+        data_dict = data.dict(exclude=exclude)
+        if check_unique:
+            await self.raise_if_not_unique(data_dict)
+        instance: TORTOISE_MODEL = self.model(**data_dict, **kwargs)
         await instance.save(force_create=True)
         return instance
 
-    async def edit(self, item_id: PK, data: SCHEMA, *args, **kwargs) -> TORTOISE_MODEL:
-        await self.raise_if_not_unique(data.dict(exclude_none=True, exclude_unset=True))
-        item = await self.get_one(item_id, *args, **kwargs)
-        await item.update_from_dict(data.dict(exclude_unset=True))
-        await item.save(force_update=True)
-        return item
+    async def edit(
+            self,
+            item_id: PK,
+            data: SCHEMA,
+            *,
+            check_unique: bool = True,
+            **kwargs
+    ) -> TORTOISE_MODEL:
+        data = data.dict(exclude_unset=True)
+        if check_unique:
+            await self.raise_if_not_unique(data)
+        instance = await self.get_one(item_id, **kwargs)
+        instance.update_from_dict(data)
+        await instance.save(force_update=True)
+        return instance
 
-    async def delete_many(self, item_ids: list[PK], *args, **kwargs) -> int:
+    async def delete_many(self, item_ids: list[PK], **kwargs) -> int:
         return await self._get_many_queryset(item_ids).delete()
 
-    async def delete_one(self, item_id: PK, *args, **kwargs) -> None:
-        item = await self.get_one(item_id, *args, **kwargs)
+    async def delete_one(self, item_id: PK, **kwargs) -> None:
+        item = await self.get_one(item_id, **kwargs)
         await item.delete()
 
     async def check_unique(self, data: dict[str, Any]) -> list[str]:
