@@ -128,15 +128,4 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
         await item.delete()
 
     async def check_unique(self, data: dict[str, Any]) -> list[str]:
-        # TODO: self.__class__._meta.unique_together
-        not_unique = []
-        query = self.model.all()
-        for key, value in self.model._meta.fields_map.items():
-            if (
-                    not value.generated
-                    and value.unique
-                    and (current_value := getattr(data, key)) is not None
-            ):
-                if await query.filter(**{key: current_value}).exists():
-                    not_unique.append(key)
-        return not_unique
+        return await self.model.check_unique(data)
