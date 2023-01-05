@@ -90,15 +90,13 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
         return item
 
     async def create(self, data: SCHEMA, exclude: set[str] = None, *args, **kwargs) -> TORTOISE_MODEL:
-        if not_unique_fields := await self.model.check_unique(data.dict()):
-            raise NotUnique(fields=not_unique_fields)
+        await self.raise_if_not_unique(data.dict())
         instance: TORTOISE_MODEL = self.model(**data.dict(exclude=exclude), **kwargs)
         await instance.save(force_create=True)
         return instance
 
     async def edit(self, item_id: PK, data: SCHEMA, *args, **kwargs) -> TORTOISE_MODEL:
-        if not_unique_fields := await self.model.check_unique(data.dict(exclude_none=True, exclude_unset=True)):
-            raise NotUnique(fields=not_unique_fields)
+        await self.raise_if_not_unique(data.dict(exclude_none=True, exclude_unset=True))
         item = await self.get_one(item_id, *args, **kwargs)
         await item.update_from_dict(data.dict(exclude_unset=True))
         await item.save(force_update=True)
@@ -110,3 +108,17 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
     async def delete_one(self, item_id: PK, *args, **kwargs) -> None:
         item = await self.get_one(item_id, *args, **kwargs)
         await item.delete()
+
+    async def check_unique(self, data: dict[str, Any]) -> list[str]:
+        # TODO: self.__class__._meta.unique_together
+        not_unique = []
+        query = self.model.all()
+        for key, value in self.model._meta.fields_map.items():
+            if (
+                    not value.generated
+                    and value.unique
+                    and (current_value := getattr(data, key)) is not None
+            ):
+                if await query.filter(**{key: current_value}).exists():
+                    not_unique.append(key)
+        return not_unique
