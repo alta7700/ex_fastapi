@@ -9,15 +9,16 @@ class Model(DefaultModel):
     class Meta:
         abstract = True
 
-    async def check_unique(self) -> list[str, ...]:
+    @classmethod
+    async def check_unique(cls, data: dict[str, Any]) -> list[str, ...]:
         # TODO: self.__class__._meta.unique_together
         not_unique = []
-        query = self.__class__.all()
-        for key, value in self.__class__._meta.fields_map.items():
+        query = cls.all()
+        for key, value in cls._meta.fields_map.items():
             if (
                     not value.generated
                     and value.unique
-                    and (current_value := getattr(self, key)) is not None
+                    and (current_value := getattr(data, key)) is not None
             ):
                 if await query.filter(**{key: current_value}).exists():
                     not_unique.append(key)
