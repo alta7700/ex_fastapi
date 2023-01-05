@@ -18,7 +18,7 @@ class Model(DefaultModel):
             if (
                     not value.generated
                     and value.unique
-                    and (current_value := getattr(data, key)) is not None
+                    and (current_value := data.get(key)) is not None
             ):
                 if await query.filter(**{key: current_value}).exists():
                     not_unique.append(key)
