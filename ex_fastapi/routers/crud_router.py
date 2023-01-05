@@ -7,6 +7,7 @@ from fastapi import Response, APIRouter, Body, Path, Query, params
 from ex_fastapi.default_response import BgHTTPException
 from ex_fastapi import BaseCodes, snake_case, CommaSeparatedOf
 from .base_crud_service import BaseCRUDService, SCHEMA
+from .exceptions import NotUnique
 from .utils import pagination_factory, PAGINATION
 
 DISPLAY_FIELDS = tuple[str, ...]
@@ -26,12 +27,7 @@ class ItemNotFound(Exception):
     pass
 
 
-class NotUnique(Exception):
-    fields: list[str]
 
-    def __init__(self, *args, fields: list[str] = None):
-        super().__init__(*args)
-        self.fields = fields or []
 
 
 DEPENDENCIES = Optional[Sequence[params.Depends]]

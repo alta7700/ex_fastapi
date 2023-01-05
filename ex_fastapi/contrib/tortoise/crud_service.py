@@ -7,7 +7,7 @@ from tortoise.transactions import in_transaction
 
 from . import Model
 from ex_fastapi.routers.base_crud_service import BaseCRUDService, PK, SCHEMA
-from ex_fastapi.routers.crud_router import ItemNotFound, NotUnique
+from ex_fastapi.routers.crud_router import ItemNotFound
 
 
 TORTOISE_MODEL = TypeVar('TORTOISE_MODEL', bound=Model)

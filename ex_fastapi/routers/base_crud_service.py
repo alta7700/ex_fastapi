@@ -2,7 +2,7 @@ from typing import Type, Any, TypeVar, Generic, Optional
 from uuid import UUID
 
 from ex_fastapi.pydantic import CamelModel
-from ex_fastapi.routers.crud_router import NotUnique
+
 
 PK = TypeVar('PK', int, UUID)
 DB_MODEL = TypeVar('DB_MODEL')
