@@ -131,6 +131,8 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 item = await edit(item_id, data)
             except ItemNotFound:
                 raise self.not_found_error()
+            except NotUnique as e:
+                raise self.not_unique_error(e.fields)
             return read_schema.from_orm(item)
 
         return route
@@ -212,12 +214,18 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 path = ''
                 method = ["POST"]
                 response_model = self.get_read_schema()
-                responses = self.codes.responses((self.not_unique_error_instance(), {'fields': ['поле1', 'поле2']}))
+                responses = self.codes.responses(
+                    (self.not_unique_error_instance(), {'fields': ['поле1', 'поле2']})
+                )
                 status = 201
             case 'edit':
                 path = '/{item_id}'
                 method = ["PATCH"]
                 response_model = self.get_read_schema()
+                responses = self.codes.responses(
+                    self._not_found_error_instance(),
+                    (self.not_unique_error_instance(), {'fields': ['поле1', 'поле2']})
+                )
             case 'delete_all':
                 path = ''
                 method = ["DELETE"]
