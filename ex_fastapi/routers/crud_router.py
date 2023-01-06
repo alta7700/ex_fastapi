@@ -45,7 +45,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             **kwargs,
     ) -> None:
         self.service = service
-        prefix = prefix.split('/') if prefix else self.service.model.__name__.lower() + 's'
+        prefix = prefix.strip('/') if prefix else self.service.model.__name__.lower() + 's'
         tags = tags or [prefix]
         prefix = '/' + prefix
         super().__init__(prefix=prefix, tags=tags, **kwargs)
