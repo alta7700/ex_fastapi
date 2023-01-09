@@ -121,7 +121,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         get_tree_node = self.service.get_tree_node
         get_list_item_schema = self.get_list_item_schema()
 
-        async def route(node_id: Optional[pk_field_type] = Path(None)):
+        async def route(node_id: Optional[pk_field_type] = Query(None, alias='nodeId')):
             return [get_list_item_schema.from_orm(item) for item in await get_tree_node(node_id)]
 
         return route
@@ -240,7 +240,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             case 'get_tree_node':
                 path = '/tree/{node_id}'
                 method = ["GET"]
-                response_model = self.get_list_item_schema()
+                response_model = list[self.get_list_item_schema()]
             case 'create':
                 path = ''
                 method = ["POST"]

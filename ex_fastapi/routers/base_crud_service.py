@@ -48,7 +48,7 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
     async def get_one(self, item_id: PK, **kwargs) -> DB_MODEL:
         raise NotImplementedError()
 
-    async def get_tree_node(self, node_id: PK, **kwargs) -> list[DB_MODEL]:
+    async def get_tree_node(self, node_id: Optional[PK], **kwargs) -> list[DB_MODEL]:
         raise NotImplementedError()
 
     async def create(self, data: SCHEMA, **kwargs) -> DB_MODEL:

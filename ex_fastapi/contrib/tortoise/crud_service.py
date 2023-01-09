@@ -93,7 +93,7 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             raise ItemNotFound()
         return instance
 
-    async def get_tree_node(self, node_id: PK, **kwargs) -> list[TORTOISE_MODEL]:
+    async def get_tree_node(self, node_id: Optional[PK], **kwargs) -> list[TORTOISE_MODEL]:
         return await self.get_queryset().filter(**{self.node_key: node_id})
 
     async def create(
