@@ -238,7 +238,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 response_model = self.get_read_schema()
                 responses = self.codes.responses(self._not_found_error_instance())
             case 'get_tree_node':
-                path = '/tree/{node_id}'
+                path = '/tree'
                 method = ["GET"]
                 response_model = list[self.get_list_item_schema()]
             case 'create':
