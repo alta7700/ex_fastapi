@@ -63,7 +63,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
 
         routes_names = self.default_routes_names()
         if add_tree_routes:
-            routes_names = *routes_names, self.tree_route_names()
+            routes_names = *routes_names, *self.tree_route_names()
 
         for route_name in routes_names:
             route_data = routes_kwargs.get(route_name, True)
