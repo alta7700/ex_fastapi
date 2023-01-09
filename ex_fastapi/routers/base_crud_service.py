@@ -17,6 +17,7 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
     create_schema: Optional[Type[SCHEMA]]
     edit_schema: Optional[Type[SCHEMA]]
     pk_field_type: Type[PK]
+    node_key: str
 
     async def get_queryset(self) -> Any:
         raise NotImplementedError()
@@ -45,6 +46,9 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
         raise NotImplementedError()
 
     async def get_one(self, item_id: PK, **kwargs) -> DB_MODEL:
+        raise NotImplementedError()
+
+    async def get_tree_node(self, node_id: PK, **kwargs) -> list[DB_MODEL]:
         raise NotImplementedError()
 
     async def create(self, data: SCHEMA, **kwargs) -> DB_MODEL:

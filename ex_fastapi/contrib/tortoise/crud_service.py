@@ -30,6 +30,7 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             queryset_select_related: Sequence[str] = None,
             queryset_prefetch_related: Sequence[str] = None,
             queryset_default_filters: dict[str, Any] = None,
+            node_key: str = 'parent_id',
             **kwargs,
     ):
         self.model = db_model
@@ -44,6 +45,9 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
         self.queryset_select_related = queryset_select_related
         self.queryset_prefetch_related = queryset_prefetch_related
         self.queryset_default_filters = queryset_default_filters
+
+        self.node_key = node_key
+
         super().__init__(**kwargs)
 
     @lru_cache
@@ -88,6 +92,9 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
         if instance is None:
             raise ItemNotFound()
         return instance
+
+    async def get_tree_node(self, node_id: PK, **kwargs) -> list[TORTOISE_MODEL]:
+        return await self.get_queryset().filter(**{self.node_key: node_id})
 
     async def create(
             self,

@@ -20,7 +20,10 @@ class DefaultCodes(BaseCodes):
     not_unique_err = 400, 'Поле должно быть уникальным ({})'
 
 
-ROUTE = Literal['get_all', 'get_many', 'get_one', 'create', 'edit', 'delete_all', 'delete_many', 'delete_one']
+DEFAULT_ROUTE = Literal['get_all', 'get_many', 'get_one', 'create', 'edit', 'delete_all', 'delete_many', 'delete_one']
+TREE_ROUTE = Literal['get_tree_node']
+ROUTE = DEFAULT_ROUTE | TREE_ROUTE
+
 DEPENDENCIES = Optional[Sequence[params.Depends]]
 
 
@@ -42,6 +45,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             tags: Optional[list[str | Enum]] = None,
             auto_routes_only_dependencies: DEPENDENCIES = None,
             routes_kwargs: dict[ROUTE, bool | dict[str, Any]] = None,
+            add_tree_routes: bool = False,
             **kwargs,
     ) -> None:
         self.service = service
@@ -56,7 +60,12 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
 
         auto_routes_only_dependencies = auto_routes_only_dependencies or []
         routes_kwargs = routes_kwargs or {}
-        for route_name in self.available_routes_name():
+
+        routes_names = self.default_routes_names()
+        if add_tree_routes:
+            routes_names = *routes_names, self.tree_route_names()
+
+        for route_name in routes_names:
             route_data = routes_kwargs.get(route_name, True)
             if route_data is False:
                 continue
@@ -184,8 +193,16 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         return self.not_unique_error_instance().format_err(', '.join(fields), {'fields': fields})
 
     @staticmethod
-    def available_routes_name() -> tuple[ROUTE, ...]:
+    def default_routes_names() -> tuple[DEFAULT_ROUTE, ...]:
         return 'get_all', 'get_many', 'get_one', 'create', 'edit', 'delete_many', 'delete_one'
+
+    @staticmethod
+    def tree_route_names() -> tuple[TREE_ROUTE, ...]:
+        return 'get_tree_node',
+
+    @classmethod
+    def all_route_names(cls) -> tuple[ROUTE, ...]:
+        return *cls.default_routes_names(), *cls.tree_route_names()
 
     def _register_route(
             self,
@@ -210,6 +227,10 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 method = ["GET"]
                 response_model = self.get_read_schema()
                 responses = self.codes.responses(self._not_found_error_instance())
+            case 'get_tree_node':
+                path = '/tree/{node_id}'
+                method = ["GET"]
+                response_model = self.get_list_item_schema()
             case 'create':
                 path = ''
                 method = ["POST"]
@@ -243,7 +264,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 responses = self.codes.responses((self._ok_response_instance(), {'item': 77}), )
             case _:
                 raise Exception(f'Unknown name of route: {route_name}.\n'
-                                f'Available are {", ".join(self.available_routes_name())}')
+                                f'Available are {", ".join(self.default_routes_names())}')
         summary = f"{route_name.title().replace('_', ' ')} {self.service.model.__name__}"
 
         route_kwargs = get_route_kwargs(route_kwargs, dependencies, responses)
