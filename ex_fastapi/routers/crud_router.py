@@ -116,7 +116,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
 
         return route
 
-    def get_tree_node_route(self) -> Callable[..., Any]:
+    def _get_tree_node_route(self) -> Callable[..., Any]:
         pk_field_type = self.service.pk_field_type
         get_tree_node = self.service.get_tree_node
         get_list_item_schema = self.get_list_item_schema()
