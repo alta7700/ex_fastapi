@@ -116,6 +116,16 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
 
         return route
 
+    def get_tree_node_route(self) -> Callable[..., Any]:
+        pk_field_type = self.service.pk_field_type
+        get_tree_node = self.service.get_tree_node
+        get_list_item_schema = self.get_list_item_schema()
+
+        async def route(node_id: Optional[pk_field_type] = Path(None)):
+            return [get_list_item_schema.from_orm(item) for item in await get_tree_node(node_id)]
+
+        return route
+
     def _create_route(self) -> Callable[..., Any]:
         create_schema = self.get_create_schema()
         read_schema = self.get_read_schema()
