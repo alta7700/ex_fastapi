@@ -5,7 +5,7 @@ from typing import Callable, Any, Generic, TypeVar, Optional, Type, Literal
 from fastapi import Response, APIRouter, Body, Path, Query, params
 
 from ex_fastapi.default_response import BgHTTPException
-from ex_fastapi import BaseCodes, snake_case, CommaSeparatedOf
+from ex_fastapi import BaseCodes, snake_case, CommaSeparatedOf, lower_camel
 from .base_crud_service import BaseCRUDService, SCHEMA
 from .exceptions import NotUnique, ItemNotFound
 from .utils import pagination_factory, PAGINATION
@@ -32,6 +32,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
     max_items_get_many_routes: Optional[int]
     max_items_delete_many_routes: Optional[int]
     codes: Type[BaseCodes | DefaultCodes]
+    tree_node_query_alias: str
 
     def __init__(
             self,
@@ -46,6 +47,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             auto_routes_only_dependencies: DEPENDENCIES = None,
             routes_kwargs: dict[ROUTE, bool | dict[str, Any]] = None,
             add_tree_routes: bool = False,
+            tree_node_query_alias: str = None,
             **kwargs,
     ) -> None:
         self.service = service
@@ -64,6 +66,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         routes_names = self.default_routes_names()
         if add_tree_routes:
             routes_names = *routes_names, *self.tree_route_names()
+            self.tree_node_query_alias = tree_node_query_alias or lower_camel(self.service.node_key)
 
         for route_name in routes_names:
             route_data = routes_kwargs.get(route_name, True)
@@ -120,8 +123,9 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         pk_field_type = self.service.pk_field_type
         get_tree_node = self.service.get_tree_node
         get_list_item_schema = self.get_list_item_schema()
+        alias = self.tree_node_query_alias
 
-        async def route(node_id: Optional[pk_field_type] = Query(None, alias='nodeId')):
+        async def route(node_id: Optional[pk_field_type] = Query(None, alias=alias)):
             return [get_list_item_schema.from_orm(item) for item in await get_tree_node(node_id)]
 
         return route
