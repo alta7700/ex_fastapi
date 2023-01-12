@@ -1,6 +1,9 @@
-from typing import Literal
+from typing import Literal, Optional
+from datetime import datetime
 
 from tortoise import fields
+from pydantic import EmailStr
+from ex_fastapi.pydantic import Username, PhoneNumber
 
 from .. import Model
 from . import PermissionMixin
