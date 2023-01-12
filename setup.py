@@ -14,6 +14,7 @@ setup(
 
     install_requires=[
         'fastapi[all]>=0.88.0',
+        'phonenumbers==8.13.4',
         'passlib>=1.7.4',
         'PyJWT>=2.6.0',
         'cryptography>=39.0.0',
