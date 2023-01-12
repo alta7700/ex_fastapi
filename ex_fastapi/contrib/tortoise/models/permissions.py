@@ -15,7 +15,7 @@ class Permission(Model):
     )
 
     class Meta:
-        table = "permission"
+        table = "permissions"
         ordering = ("content_type", "name")
         unique_together = (('name', 'content_type'),)
 
@@ -23,10 +23,10 @@ class Permission(Model):
 class PermissionGroup(Model):
     id: int
     name: str = fields.CharField(max_length=100, description='Наименование', unique=True)
-    permissions: fields.ManyToManyRelation["Permission"] = fields.ManyToManyField('models.Permission')
+    permissions: fields.ManyToManyRelation[Permission] = fields.ManyToManyField('models.Permission')
 
     class Meta:
-        table = "permission_group"
+        table = "permission_groups"
         ordering = ('name',)
 
     def repr(self) -> str:
@@ -36,7 +36,7 @@ class PermissionGroup(Model):
 
 class PermissionMixin(Model):
     permissions: fields.ManyToManyRelation[Permission] = fields.ManyToManyField('models.Permission')
-    group: fields.ManyToManyRelation[PermissionGroup] = fields.ManyToManyField('models.PermissionGroup')
+    groups: fields.ManyToManyRelation[PermissionGroup] = fields.ManyToManyField('models.PermissionGroup')
 
     class Meta:
         abstract = True

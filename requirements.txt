@@ -1,5 +1,6 @@
 fastapi[all]==0.89.0
 tortoise-orm[asyncpg]==0.19.2
+aerich==0.7.1
 phonenumbers==8.13.4
 
 passlib==1.7.4
