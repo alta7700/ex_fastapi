@@ -1,3 +1,5 @@
+from typing import Literal
+
 from tortoise import fields
 
 from .. import Model
