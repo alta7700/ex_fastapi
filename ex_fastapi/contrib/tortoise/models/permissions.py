@@ -11,7 +11,7 @@ class Permission(Model):
     id: int
     name: str = fields.CharField(max_length=50)
     content_type: fields.ForeignKeyRelation[ContentType] = fields.ForeignKeyField(
-        'auth.ContentType', on_delete=fields.CASCADE, related_name='permissions'
+        'models.ContentType', on_delete=fields.CASCADE, related_name='permissions'
     )
 
     class Meta:
