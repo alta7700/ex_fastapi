@@ -16,7 +16,7 @@ class Permission(Model):
 
     class Meta:
         table = "permissions"
-        ordering = ("content_type", "name")
+        ordering = ("content_type__id", "name")
         unique_together = (('name', 'content_type'),)
 
 

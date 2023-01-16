@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal, Optional, Any, Type
 from datetime import datetime
 
 from tortoise import fields
@@ -9,14 +9,18 @@ from .. import Model
 from . import PermissionMixin
 
 
+__all__ = ["BaseUser", "UserWithPermissions"]
+
 USER_GET_BY_FIELDS = Literal['id', 'email', 'username', 'phone']
 
 
-class User(Model):
+class BaseUser(Model):
     id: int
     username: Optional[Username] = fields.CharField(max_length=40, unique=True, null=True)
     email: Optional[EmailStr] = fields.CharField(max_length=256, unique=True, null=True)
     phone: Optional[PhoneNumber] = fields.CharField(max_length=25, unique=True, null=True)
+    AUTH_FIELDS: tuple[str] = ('email', 'phone', 'username')
+    IEXACT_FIELDS = ('email', 'username')
 
     password_hash: str = fields.CharField(max_length=200)
     password_change_dt: datetime = fields.DatetimeField()
@@ -33,6 +37,6 @@ class User(Model):
         return self.username or self.email or self.phone
 
 
-class UserWithPermissions(User, PermissionMixin):
+class UserWithPermissions(BaseUser, PermissionMixin):
     class Meta:
         abstract = True

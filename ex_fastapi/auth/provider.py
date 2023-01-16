@@ -1,11 +1,13 @@
 from datetime import timedelta, datetime
-from typing import Any, Type
+from typing import Any, Type, Literal
+
+from fastapi import Response
 
 from ex_fastapi import CamelModel
 from ex_fastapi.default_response import DefaultJSONEncoder
 from .schemas import _TokenIssue, _TokenPair
 from .config import BaseJWTConfig, TokenTypes
-
+from ..settings import get_settings
 
 LIFETIME = dict[TokenTypes, int]
 lifetime_default: LIFETIME = {
@@ -25,6 +27,12 @@ class JWTProvider(BaseJWTConfig):
 
     def encode(self, payload: dict[str, Any]) -> str:
         return self.jwt.encode(payload, self.PRIVATE_KEY, self.ALGORITHM, json_encoder=self.json_encoder)
+
+try:
+    COOKIE_SECURE = get_settings().settings.COOKIE_SECURE
+except Exception as e:
+    print(e)
+    COOKIE_SECURE = None
 
 
 class AuthProvider:
@@ -64,3 +72,15 @@ class AuthProvider:
             refresh_token=self.create_refresh_token(user, now=now),
             user=user
         )
+
+    def set_auth_cookie(self, response: Response, user):
+        access_token = self.create_access_token(user)
+        response.set_cookie(
+            key='Token', value="Bearer " + access_token,
+            path='/api', max_age=self.jwt.lifetime[TokenTypes.access],
+            httponly=True, secure=COOKIE_SECURE
+        )
+
+    @classmethod
+    def delete_auth_cookie(cls, response: Response):
+        response.delete_cookie(key='Token', path='/api', httponly=True, secure=COOKIE_SECURE)

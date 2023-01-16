@@ -25,17 +25,21 @@ class Model(DefaultModel):
         return not_unique
 
 
-def get_field(model: Type[Model], fname: str):
-    return model._meta.fields_map[fname]
+def get_field_param(model: Type[Model], field_name: str, field_param: str):
+    return getattr(model._meta.fields_map[field_name], field_param)
 
 
 def max_len_of(model: Type[Model]) -> Callable[[str], int]:
-    def wrapper(fname: str):
-        return get_field(model, fname).max_length
-    return wrapper
+    return lambda field_name: get_field_param(model, field_name, 'max_length')
 
 
 def default_of(model: Type[Model]) -> Callable[[str], Any]:
-    def wrapper(fname: str):
-        return get_field(model, fname).default
-    return wrapper
+    return lambda field_name: get_field_param(model, field_name, 'default')
+
+
+def get_user_model() -> Type[Model]:
+    import importlib
+
+    settings = importlib.import_module('settings')
+    user_app, user_model_name = settings.AUTH_MODEL.split('.')
+    return getattr(importlib.import_module(user_app), user_model_name)
