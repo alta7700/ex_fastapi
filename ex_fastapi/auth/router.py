@@ -6,7 +6,7 @@ from fastapi import APIRouter, Response, Depends
 from ex_fastapi import CamelModel, BaseCodes
 from ex_fastapi.auth import AuthErrors, AuthProvider
 from ex_fastapi.auth.config import TokenTypes
-from ex_fastapi.auth.schemas import get_user_default_schema
+from ex_fastapi.auth.schemas import get_user_default_schema, USER_SCHEMA
 
 
 class DefaultCodes(BaseCodes):
@@ -19,18 +19,21 @@ def create_auth_router(
         access_token_lifetime: int = None,
         refresh_token_lifetime: int = None,
         prefix: str = '/auth',
-        user_me_read: Type[CamelModel] = None,
-        auth_schema: Type[CamelModel] = None,
-        token_user: Type[CamelModel] = None,
+        schemas: USER_SCHEMA = None,
         user_repo_cls=None,
 ) -> APIRouter:
     # TODO: избавиться от импортов
     from ex_fastapi.contrib.tortoise.auth.dependencies import get_sign_in_user
     from ex_fastapi.contrib.tortoise.auth.repo import UserRepository
 
-    user_me_read = user_me_read or get_user_default_schema("UserMeRead")
-    auth_schema = auth_schema or get_user_default_schema("AuthSchema")
-    token_user = token_user or get_user_default_schema("TokenUser")
+    schemas = schemas or {}
+
+    def get_schema(schema_name: USER_SCHEMA) -> Type[CamelModel]:
+        return schemas.get(schema_name) or get_user_default_schema(schema_name)
+
+    user_me_read = get_schema("UserMeRead")
+    auth_schema = get_schema("AuthSchema")
+    token_user = get_schema("TokenUser")
 
     user_repo_cls: Type[UserRepository] = user_repo_cls or UserRepository
 

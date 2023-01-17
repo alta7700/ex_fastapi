@@ -19,7 +19,7 @@ class BaseUser(Model):
     username: Optional[Username] = fields.CharField(max_length=40, unique=True, null=True)
     email: Optional[EmailStr] = fields.CharField(max_length=256, unique=True, null=True)
     phone: Optional[PhoneNumber] = fields.CharField(max_length=25, unique=True, null=True)
-    AUTH_FIELDS: tuple[str] = ('email', 'phone', 'username')
+    AUTH_FIELDS = ('email', 'phone', 'username')
     IEXACT_FIELDS = ('email', 'username')
 
     password_hash: str = fields.CharField(max_length=200)

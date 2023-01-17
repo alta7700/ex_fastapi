@@ -21,6 +21,8 @@ class PhoneNumber(str):
     def validate(cls, v: str):
         try:
             pn = phonenumbers.parse(v.replace(' ', ''), region='RU')
+            if not phonenumbers.is_valid_number(pn):
+                raise ValueError('invalid phone number format')
         except phonenumbers.phonenumberutil.NumberParseException:
             raise ValueError('invalid phone number format')
         return cls(phonenumbers.format_number(pn, phonenumbers.PhoneNumberFormat.E164))

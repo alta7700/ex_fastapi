@@ -65,6 +65,7 @@ class BaseAuthSchema(CamelModel):
         else:
             if not any(x in values for x in cls.__config__.auth_fields):
                 raise ValueError('No valid email, phone or username for sign in')
+        print(values)
         return values
 
     def get_auth_field_and_value(self) -> tuple[str, Any]:
@@ -78,12 +79,12 @@ class BaseAuthSchema(CamelModel):
         auth_fields = ()
 
 
-default_schemas_names = Literal[
+USER_SCHEMA = Literal[
     "UserMeRead", "UserRead", "UserEdit", "UserCreate",
     "UserO2ORead", "UserO2OEdit", "UserO2OCreate",
     "AuthSchema", "TokenUser"
 ]
-default_schemas: dict[default_schemas_names, Type[CamelModel]] = {}
+default_schemas: dict[USER_SCHEMA, Type[CamelModel]] = {}
 
 
 def set_user_default_schemas():
@@ -149,7 +150,7 @@ def set_user_default_schemas():
     })
 
 
-def get_user_default_schema(schema_name: default_schemas_names):
+def get_user_default_schema(schema_name: USER_SCHEMA):
     if not default_schemas:
         set_user_default_schemas()
     return default_schemas[schema_name]

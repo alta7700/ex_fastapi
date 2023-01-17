@@ -51,5 +51,10 @@ class CamelModel(BaseModel):
     Config = CamelConfig
 
 
+class CamelModelORM(CamelModel):
+    class Config(CamelModel.Config):
+        orm_mode = True
+
+
 class CamelGeneric(GenericModel):
     Config = CamelConfig

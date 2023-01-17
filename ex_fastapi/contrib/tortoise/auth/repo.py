@@ -2,7 +2,6 @@ from random import choices
 from string import hexdigits
 from typing import Type, TypeVar
 
-from fastapi import Response
 from passlib.context import CryptContext
 from tortoise import timezone
 from tortoise.queryset import QuerySetSingle
@@ -10,8 +9,7 @@ from tortoise.queryset import QuerySetSingle
 from ex_fastapi.auth.base_repo import BaseUserRepository
 from ex_fastapi.auth.schemas import PasswordsPair
 from .. import get_user_model, max_len_of
-from ..models import BaseUser
-
+from ..models import BaseUser, Permission
 
 USER = TypeVar("USER", bound=BaseUser)
 user_model = get_user_model()
@@ -23,10 +21,9 @@ class UserRepository(BaseUserRepository[USER]):
     pwd_context = CryptContext(schemes=["md5_crypt"])
 
     @classmethod
-    async def create_user(cls, data: PasswordsPair, **kwargs) -> USER:
-        self = cls(cls.model(**data.dict(exclude={'password', 're_password'}), **kwargs))
+    async def create_user(cls, data: PasswordsPair, should_exclude: set[str], **kwargs) -> USER:
+        self = cls(cls.model(**data.dict(exclude={'password', 're_password', *should_exclude}), **kwargs))
         self.set_password(data.password)
-        await self.save(force_create=True)
         return self.user
 
     def set_password(self, password: str) -> None:
@@ -54,12 +51,12 @@ class UserRepository(BaseUserRepository[USER]):
     async def can_login(self):
         return self.user.is_active
 
-    async def get_permissions(self):
-        return *self.user.permissions, *self.user.groups
+    async def get_permissions(self) -> tuple[Permission, ...]:
+        return *self.user.permissions, *(p for g in self.user.groups for p in g.permissions)
 
     async def has_permissions(self, permissions) -> bool:
         # if not permissions:
         #     return True
-        perms = await self.get_permissions()
-        print(perms)
+        user_perms = await self.get_permissions()
+        print(user_perms)
         return True

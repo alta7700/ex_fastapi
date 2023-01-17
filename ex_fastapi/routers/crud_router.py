@@ -48,6 +48,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             routes_kwargs: dict[ROUTE, bool | dict[str, Any]] = None,
             add_tree_routes: bool = False,
             tree_node_query_alias: str = None,
+            read_only: bool = False,
             **kwargs,
     ) -> None:
         self.service = service
@@ -59,6 +60,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         self.codes = codes
         self.max_items_get_many_routes = max_items_get_many_route or max_items_many_route
         self.max_items_delete_many_routes = max_items_delete_many_route or max_items_many_route
+        self.read_only = read_only
 
         auto_routes_only_dependencies = auto_routes_only_dependencies or []
         routes_kwargs = routes_kwargs or {}
@@ -206,17 +208,17 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
     def not_unique_error(self, fields: list[str]) -> BgHTTPException:
         return self.not_unique_error_instance().format_err(', '.join(fields), {'fields': fields})
 
-    @staticmethod
-    def default_routes_names() -> tuple[DEFAULT_ROUTE, ...]:
+    def default_routes_names(self) -> tuple[DEFAULT_ROUTE, ...]:
+        if self.read_only:
+            return 'get_all', 'get_many', 'get_one'
         return 'get_all', 'get_many', 'get_one', 'create', 'edit', 'delete_many', 'delete_one'
 
     @staticmethod
     def tree_route_names() -> tuple[TREE_ROUTE, ...]:
         return 'get_tree_node',
 
-    @classmethod
-    def all_route_names(cls) -> tuple[ROUTE, ...]:
-        return *cls.default_routes_names(), *cls.tree_route_names()
+    def all_route_names(self) -> tuple[ROUTE, ...]:
+        return *self.default_routes_names(), *self.tree_route_names()
 
     def _register_route(
             self,

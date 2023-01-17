@@ -62,10 +62,3 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
 
     async def delete_one(self, item_id: PK, **kwargs) -> None:
         raise NotImplementedError()
-
-    async def check_unique(self, data: dict[str]) -> list[str]:
-        raise NotImplementedError()
-
-    async def raise_if_not_unique(self, data: dict[str]) -> None:
-        if not_unique_fields := await self.check_unique(data):
-            raise NotUnique(fields=not_unique_fields)
