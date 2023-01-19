@@ -6,8 +6,7 @@ from pydantic import EmailStr
 from ex_fastapi.pydantic import Username, PhoneNumber
 
 from .. import Model
-from . import PermissionMixin
-
+from . import PermissionMixin, Permission
 
 __all__ = ["BaseUser", "UserWithPermissions"]
 
@@ -40,3 +39,7 @@ class BaseUser(Model):
 class UserWithPermissions(BaseUser, PermissionMixin):
     class Meta:
         abstract = True
+
+    @property
+    def all_permissions(self) -> set[Permission]:
+        return {*self.permissions, *(p for g in self.groups for p in g.permissions)}

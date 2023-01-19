@@ -27,5 +27,6 @@ def get_user_crud_service(
         edit_schema=user_edit,
         create_schema=user_create,
         create_handlers={user_repo_cls.model: user_repo_cls.create_user},
+        queryset_prefetch_related=('permissions', 'groups__permissions'),
         **crud_kwargs
     )

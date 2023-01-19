@@ -10,13 +10,14 @@ __all__ = ["Permission", "PermissionGroup", "PermissionMixin"]
 class Permission(Model):
     id: int
     name: str = fields.CharField(max_length=50)
+    content_type_id: int
     content_type: fields.ForeignKeyRelation[ContentType] | ContentType = fields.ForeignKeyField(
         'models.ContentType', on_delete=fields.CASCADE, related_name='permissions'
     )
 
     class Meta:
         table = "permissions"
-        ordering = ("content_type__id", "name")
+        ordering = ("content_type_id", "name")
         unique_together = (('name', 'content_type'),)
 
     def __str__(self):

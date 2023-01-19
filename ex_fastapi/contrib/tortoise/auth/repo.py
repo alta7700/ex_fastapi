@@ -1,6 +1,6 @@
 from random import choices
 from string import hexdigits
-from typing import Type, TypeVar
+from typing import Type
 
 from passlib.context import CryptContext
 from tortoise import timezone
@@ -8,20 +8,19 @@ from tortoise.queryset import QuerySetSingle
 
 from ex_fastapi.auth.base_repo import BaseUserRepository
 from ex_fastapi.auth.schemas import PasswordsPair
-from .. import get_user_model, max_len_of
-from ..models import BaseUser, Permission
+from .. import get_user_model, max_len_of, Model
+from ..models import UserWithPermissions, ContentType
 
-USER = TypeVar("USER", bound=BaseUser)
 user_model = get_user_model()
 
 
-class UserRepository(BaseUserRepository[USER]):
-    model: Type[USER] = user_model
-    user: USER
+class UserRepository(BaseUserRepository[UserWithPermissions]):
+    model: Type[UserWithPermissions] = user_model
+    user: UserWithPermissions
     pwd_context = CryptContext(schemes=["md5_crypt"])
 
     @classmethod
-    async def create_user(cls, data: PasswordsPair, should_exclude: set[str], **kwargs) -> USER:
+    async def create_user(cls, data: PasswordsPair, should_exclude: set[str], **kwargs) -> UserWithPermissions:
         self = cls(cls.model(**data.dict(exclude={'password', 're_password', *should_exclude}), **kwargs))
         self.set_password(data.password)
         return self.user
@@ -43,7 +42,7 @@ class UserRepository(BaseUserRepository[USER]):
         return self.user.save
 
     @classmethod
-    def get_user_by(cls, field: str, value: str | int) -> QuerySetSingle["USER"]:
+    def get_user_by(cls, field: str, value: str | int) -> QuerySetSingle[UserWithPermissions]:
         if field in cls.model.IEXACT_FIELDS:
             field += '__iexact'
         return cls.model.get_or_none(**{field: value})
@@ -51,12 +50,17 @@ class UserRepository(BaseUserRepository[USER]):
     async def can_login(self):
         return self.user.is_active
 
-    async def get_permissions(self) -> tuple[Permission, ...]:
-        return *self.user.permissions, *(p for g in self.user.groups for p in g.permissions)
+    def get_permissions(self) -> tuple[tuple[int, str], ...]:
+        return tuple((perm.content_type_id, perm.name) for perm in self.user.all_permissions)
 
-    async def has_permissions(self, permissions) -> bool:
-        # if not permissions:
-        #     return True
-        user_perms = await self.get_permissions()
-        print(user_perms)
-        return True
+    async def has_permissions(self, permissions: tuple[tuple[Type[Model], str], ...]) -> bool:
+        if not permissions:
+            return True
+        user_perms = self.get_permissions()
+        has = True
+        for model, perm_name in permissions:
+            content_type_id = ContentType.get_by_name(model.__name__).id
+            if (content_type_id, perm_name) not in user_perms:
+                has = False
+                break
+        return has

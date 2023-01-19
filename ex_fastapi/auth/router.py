@@ -15,7 +15,6 @@ class DefaultCodes(BaseCodes):
 
 def create_auth_router(
         private_key: str,
-        check_user_func: Callable,
         access_token_lifetime: int = None,
         refresh_token_lifetime: int = None,
         prefix: str = '/auth',
@@ -23,7 +22,7 @@ def create_auth_router(
         user_repo_cls=None,
 ) -> APIRouter:
     # TODO: избавиться от импортов
-    from ex_fastapi.contrib.tortoise.auth.dependencies import get_sign_in_user
+    from ex_fastapi.contrib.tortoise.auth.dependencies import get_sign_in_user, user_with_perms
     from ex_fastapi.contrib.tortoise.auth.repo import UserRepository
 
     schemas = schemas or {}
@@ -72,7 +71,7 @@ def create_auth_router(
     @router.get('/check', response_model=user_me_read, responses=AuthErrors.responses(*AuthErrors.all_errors()))
     async def get_me(
             response: Response,
-            user_repo: UserRepository = Depends(check_user_func())
+            user_repo: UserRepository = Depends(user_with_perms())
     ):
         if not await user_repo.can_login():
             raise AuthErrors.not_authenticated.err()

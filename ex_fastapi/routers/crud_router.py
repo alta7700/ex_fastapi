@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from enum import Enum
 from typing import Callable, Any, Generic, TypeVar, Optional, Type, Literal
 
-from fastapi import Response, APIRouter, Body, Path, Query, params
+from fastapi import Response, APIRouter, Body, Path, Query, params, Depends
 
 from ex_fastapi.default_response import BgHTTPException
 from ex_fastapi import BaseCodes, snake_case, CommaSeparatedOf, lower_camel
@@ -234,19 +234,23 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 path = '/all'
                 method = ["GET"]
                 response_model = list[self.get_list_item_schema()]
+                dependencies = [*dependencies, Depends(self.service.has_get_permissions())]
             case 'get_many':
                 path = '/many'
                 method = ["GET"]
                 response_model = list[self.get_read_schema()]
+                dependencies = [*dependencies, Depends(self.service.has_get_permissions())]
             case 'get_one':
                 path = '/one/{item_id}'
                 method = ["GET"]
                 response_model = self.get_read_schema()
                 responses = self.codes.responses(self._not_found_error_instance())
+                dependencies = [*dependencies, Depends(self.service.has_get_permissions())]
             case 'get_tree_node':
                 path = '/tree'
                 method = ["GET"]
                 response_model = list[self.get_list_item_schema()]
+                dependencies = [*dependencies, Depends(self.service.has_get_permissions())]
             case 'create':
                 path = ''
                 method = ["POST"]
@@ -255,6 +259,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                     (self.not_unique_error_instance(), {'fields': ['поле1', 'поле2']})
                 )
                 status = 201
+                dependencies = [*dependencies, Depends(self.service.has_create_permissions())]
             case 'edit':
                 path = '/{item_id}'
                 method = ["PATCH"]
@@ -263,21 +268,19 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                     self._not_found_error_instance(),
                     (self.not_unique_error_instance(), {'fields': ['поле1', 'поле2']})
                 )
-            case 'delete_all':
-                path = ''
-                method = ["DELETE"]
-                # don`t need response model, responses has one with status 200
-                responses = self.codes.responses((self._ok_response_instance(), {'count': 10000}), )
+                dependencies = [*dependencies, Depends(self.service.has_edit_permissions())]
             case 'delete_many':
                 path = '/many'
                 method = ["DELETE"]
                 # don`t need response model, responses has one with status 200
                 responses = self.codes.responses((self._ok_response_instance(), {'count': 30}), )
+                dependencies = [*dependencies, Depends(self.service.has_delete_permissions())]
             case 'delete_one':
                 path = '/{item_id}'
                 method = ["DELETE"]
                 # don`t need response model, responses has one with status 200
                 responses = self.codes.responses((self._ok_response_instance(), {'item': 77}), )
+                dependencies = [*dependencies, Depends(self.service.has_delete_permissions())]
             case _:
                 raise Exception(f'Unknown name of route: {route_name}.\n'
                                 f'Available are {", ".join(self.default_routes_names())}')

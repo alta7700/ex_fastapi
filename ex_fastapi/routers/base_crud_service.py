@@ -62,3 +62,15 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
 
     async def delete_one(self, item_id: PK, **kwargs) -> None:
         raise NotImplementedError()
+
+    def has_create_permissions(self):
+        raise NotImplementedError()
+
+    def has_get_permissions(self):
+        raise NotImplementedError()
+
+    def has_edit_permissions(self):
+        raise NotImplementedError()
+
+    def has_delete_permissions(self):
+        raise NotImplementedError()

@@ -11,6 +11,7 @@ from tortoise.transactions import in_transaction
 from . import Model
 from ex_fastapi.routers.base_crud_service import BaseCRUDService, PK, SCHEMA
 from ex_fastapi.routers.exceptions import ItemNotFound, NotUnique
+from .auth.dependencies import user_with_perms
 
 TORTOISE_MODEL = TypeVar('TORTOISE_MODEL', bound=Model)
 
@@ -239,6 +240,14 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
     def exclude_m2m(self, model: Type[Model], data: SCHEMA) -> set[str]:
         return self.exclude_fields_from_data(data, *model._meta.m2m_fields)
 
+    @classmethod
+    def exclude_fields_from_data(cls, data: SCHEMA, *fields: str) -> set[str]:
+        m2m_fields: set[str] = set()
+        for field_name in fields:
+            if getattr(data, field_name, None) is not None:
+                m2m_fields.add(field_name)
+        return m2m_fields
+
     def handle_create(self, model: Type[Model]) -> Handler:
         if handler := self.create_handlers.get(model):
             return handler
@@ -264,14 +273,6 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
         self.create_handlers[model] = base_handler
         return base_handler
 
-    @classmethod
-    def exclude_fields_from_data(cls, data: SCHEMA, *fields: str) -> set[str]:
-        m2m_fields: set[str] = set()
-        for field_name in fields:
-            if getattr(data, field_name, None) is not None:
-                m2m_fields.add(field_name)
-        return m2m_fields
-
     async def save_m2m(self, instance: TORTOISE_MODEL, data: SCHEMA, m2m_fields: set[str], clear=True) -> None:
         if not m2m_fields:
             return
@@ -282,6 +283,18 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
                 await rel.clear()
             await rel.add(*(await rel.remote_model.filter(pk__in=ids)))
         await instance.fetch_related(*self.queryset_prefetch_related)
+
+    def has_create_permissions(self):
+        return user_with_perms((self.model, 'create'))
+
+    def has_get_permissions(self):
+        return user_with_perms((self.model, 'get'))
+
+    def has_edit_permissions(self):
+        return user_with_perms((self.model, 'edit'))
+
+    def has_delete_permissions(self):
+        return user_with_perms((self.model, 'delete'))
 
 
 def get_exclude_dict(fields: set[str]) -> dict[str, set[str]]:

@@ -2,7 +2,7 @@ from typing import Optional, Type, Literal
 
 from pydantic import Field
 
-from ex_fastapi.pydantic import CamelModel, CamelModelORM, RelatedList
+from ex_fastapi.pydantic import CamelModel, CamelModelORM, RelatedList, FieldInRelatedModel
 
 ROLE_SCHEMAS = Literal[
     "ContentTypeRead", "PermissionRead",
@@ -14,7 +14,7 @@ roles_schemas: dict[ROLE_SCHEMAS, Type[CamelModel]] = {}
 def set_roles_default_schemas() -> None:
     #TODO: избавиться от импортов
     from ex_fastapi.contrib.tortoise import max_len_of
-    from ex_fastapi.contrib.tortoise.models import PermissionGroup
+    from ex_fastapi.contrib.tortoise.models import PermissionGroup, Permission
 
     max_len_pg = max_len_of(PermissionGroup)
 
@@ -30,7 +30,7 @@ def set_roles_default_schemas() -> None:
     class PermissionGroupRead(CamelModelORM):
         id: int
         name: str
-        permissions: RelatedList[PermissionRead]
+        permissions: RelatedList[FieldInRelatedModel(Permission, 'id', int)]
 
     class PermissionGroupCreate(CamelModel):
         name: str = Field(max_length=max_len_pg('name'))

@@ -3,9 +3,10 @@ from typing import Generic, TypeVar, Any, Optional, Literal, Type
 
 from pydantic import root_validator, validator, EmailStr, Field
 
-from ex_fastapi.pydantic import CamelModel, Password, Username, PhoneNumber
+from ex_fastapi.pydantic import CamelModel, Password, Username, PhoneNumber, RelatedList, FieldInRelatedModel
 from ex_fastapi.pydantic.camel_model import CamelGeneric
 from .config import TokenTypes
+from .roles.schemas import get_roles_default_schema
 
 USER = TypeVar('USER', bound=CamelModel)
 
@@ -65,7 +66,6 @@ class BaseAuthSchema(CamelModel):
         else:
             if not any(x in values for x in cls.__config__.auth_fields):
                 raise ValueError('No valid email, phone or username for sign in')
-        print(values)
         return values
 
     def get_auth_field_and_value(self) -> tuple[str, Any]:
@@ -90,6 +90,8 @@ default_schemas: dict[USER_SCHEMA, Type[CamelModel]] = {}
 def set_user_default_schemas():
     # TODO: что-то придумать, чтобы избавиться от импорта
     from ex_fastapi.contrib.tortoise import max_len_of, default_of, get_user_model
+    from ex_fastapi.contrib.tortoise.models import Permission, PermissionGroup
+
     user_model = get_user_model()
 
     class UserBase(CamelModel):
@@ -111,22 +113,29 @@ def set_user_default_schemas():
         class Config(UserBase.Config):
             orm_mode = True
 
-    class UserRead(UserO2ORead):
-        is_superuser: bool
-        is_active: bool
-
-    UserMeRead = UserRead
     UserO2OEdit = UserBase
 
     class UserO2OCreate(PasswordsPair, UserBase):
         password: Optional[Password]
         re_password: Optional[str]
 
+    class UserRead(UserO2ORead):
+        permissions: RelatedList[FieldInRelatedModel(Permission, 'id', int)]
+        groups: RelatedList[get_roles_default_schema("PermissionGroupRead")]
+        is_superuser: bool
+        is_active: bool
+
+    UserMeRead = UserRead
+
     class UserEdit(UserBase):
+        permissions: Optional[list[int]]
+        groups: Optional[list[int]]
         is_superuser: Optional[bool]
         is_active: Optional[bool]
 
     class UserCreate(PasswordsPair, UserBase):
+        permissions: list[int] = Field(default=[])
+        groups: list[int] = Field(default=[])
         is_superuser: Optional[bool] = Field(default=default_of(user_model)('is_superuser'))
         is_active: Optional[bool] = Field(default=default_of(user_model)('is_active'))
 

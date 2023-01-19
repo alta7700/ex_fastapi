@@ -53,7 +53,7 @@ class BaseUserRepository(Generic[USER]):
     async def username_exists(cls, username: str) -> bool:
         return await cls.get_user_by('username', username) is not None
 
-    async def login(self, response: Response):
+    async def can_login(self):
         raise NotImplementedError
 
     async def get_permissions(self):
