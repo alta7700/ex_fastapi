@@ -1,81 +1,80 @@
-from collections.abc import Callable
-from typing import Type
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Response, Depends
 
-from ex_fastapi import CamelModel, BaseCodes
-from ex_fastapi.auth import AuthErrors, AuthProvider
-from ex_fastapi.auth.config import TokenTypes
-from ex_fastapi.auth.schemas import get_user_default_schema, USER_SCHEMA
+from ex_fastapi.global_objects import \
+    get_default_codes, get_auth_errors, \
+    get_user_repository, get_crud_service,\
+    get_auth_provider, get_auth_dependencies
+from ex_fastapi.pydantic import get_schema
+from ex_fastapi.schemas import UserMeRead, TokenUser, UserRead, UserEdit, UserCreate
+from ex_fastapi.routers import CRUDRouter
+
+if TYPE_CHECKING:
+    from ex_fastapi.auth import AuthProvider
 
 
-class DefaultCodes(BaseCodes):
-    OK = 200, 'ОК'
+DefaultCodes = get_default_codes()
+UserRepository = get_user_repository()
+UserMeRead = get_schema(UserMeRead)
+TokenUser = get_schema(TokenUser)
+AuthErrors = get_auth_errors()
+dependencies = get_auth_dependencies()
 
 
 def create_auth_router(
-        private_key: str,
-        access_token_lifetime: int = None,
-        refresh_token_lifetime: int = None,
         prefix: str = '/auth',
-        schemas: USER_SCHEMA = None,
-        user_repo_cls=None,
+        auth_provider: "AuthProvider" = None,
+        include_users: bool = True,
+        **kwargs
 ) -> APIRouter:
-    # TODO: избавиться от импортов
-    from ex_fastapi.contrib.tortoise.auth.dependencies import get_sign_in_user, user_with_perms
-    from ex_fastapi.contrib.tortoise.auth.repo import UserRepository
 
-    schemas = schemas or {}
+    auth_provider = auth_provider or get_auth_provider()
+    auth_tags = [prefix.strip('/')]
+    router = APIRouter(prefix=prefix, **kwargs)
 
-    def get_schema(schema_name: USER_SCHEMA) -> Type[CamelModel]:
-        return schemas.get(schema_name) or get_user_default_schema(schema_name)
-
-    user_me_read = get_schema("UserMeRead")
-    auth_schema = get_schema("AuthSchema")
-    token_user = get_schema("TokenUser")
-
-    user_repo_cls: Type[UserRepository] = user_repo_cls or UserRepository
-
-    token_lifetime = {}
-    if access_token_lifetime:
-        token_lifetime[TokenTypes.access] = access_token_lifetime
-    if refresh_token_lifetime:
-        token_lifetime[TokenTypes.refresh] = refresh_token_lifetime
-
-    auth_provider = AuthProvider(
-        token_user=token_user,
-        user_me_read=user_me_read,
-        private_key=private_key,
-        lifetime=token_lifetime
-    )
-
-    router = APIRouter(prefix=prefix, tags=[prefix.strip('/')])
-
-    @router.post('/login', response_model=user_me_read, responses=AuthErrors.responses(
+    @router.post('/login', tags=auth_tags, response_model=UserMeRead, responses=AuthErrors.responses(
         AuthErrors.not_authenticated
     ))
     async def login(
             response: Response,
-            user_repo: user_repo_cls = Depends(get_sign_in_user(auth_schema, user_repo_cls)),
+            user_repo: UserRepository = Depends(dependencies.get_sign_in_user),
     ):
         if not await user_repo.can_login():
             raise AuthErrors.not_authenticated.err()
         auth_provider.set_auth_cookie(response, user_repo.user)
-        return user_me_read.from_orm(user_repo.user)
+        return UserMeRead.from_orm(user_repo.user)
 
-    @router.get('/logout', responses=DefaultCodes.responses(DefaultCodes.OK))
+    @router.get('/logout', tags=auth_tags, responses=DefaultCodes.responses(DefaultCodes.OK))
     async def logout(response: Response):
         auth_provider.delete_auth_cookie(response)
         return DefaultCodes.OK.resp
 
-    @router.get('/check', response_model=user_me_read, responses=AuthErrors.responses(*AuthErrors.all_errors()))
+    @router.get('/check', tags=auth_tags, response_model=UserMeRead,
+                responses=AuthErrors.responses(*AuthErrors.all_errors()))
     async def get_me(
             response: Response,
-            user_repo: UserRepository = Depends(user_with_perms())
+            user_repo: UserRepository = Depends(dependencies.user_with_perms())
     ):
         if not await user_repo.can_login():
             raise AuthErrors.not_authenticated.err()
         auth_provider.set_auth_cookie(response, user_repo.user)
-        return user_me_read.from_orm(user_repo.user)
+        return UserMeRead.from_orm(user_repo.user)
+
+    if include_users:
+
+        user_crud_service = get_crud_service()(
+            UserRepository.model,
+            read_schema=get_schema(UserRead),
+            edit_schema=get_schema(UserEdit),
+            create_schema=get_schema(UserCreate),
+            create_handlers={UserRepository.model: UserRepository.create_user},
+            queryset_prefetch_related=('permissions', 'groups__permissions'),
+        )
+
+        router.include_router(CRUDRouter(
+            service=user_crud_service,
+            max_items_many_route=100,
+        ))
 
     return router

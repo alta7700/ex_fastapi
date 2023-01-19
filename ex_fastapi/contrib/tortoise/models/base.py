@@ -4,7 +4,7 @@ from typing import Any, Type
 from tortoise import Model as DefaultModel
 
 
-class Model(DefaultModel):
+class BaseModel(DefaultModel):
 
     class Meta:
         abstract = True
@@ -25,21 +25,13 @@ class Model(DefaultModel):
         return not_unique
 
 
-def get_field_param(model: Type[Model], field_name: str, field_param: str):
+def get_field_param(model: Type[BaseModel], field_name: str, field_param: str):
     return getattr(model._meta.fields_map[field_name], field_param)
 
 
-def max_len_of(model: Type[Model]) -> Callable[[str], int]:
+def max_len_of(model: Type[BaseModel]) -> Callable[[str], int]:
     return lambda field_name: get_field_param(model, field_name, 'max_length')
 
 
-def default_of(model: Type[Model]) -> Callable[[str], Any]:
+def default_of(model: Type[BaseModel]) -> Callable[[str], Any]:
     return lambda field_name: get_field_param(model, field_name, 'default')
-
-
-def get_user_model() -> Type[Model]:
-    import importlib
-
-    settings = importlib.import_module('settings')
-    user_app, user_model_name = settings.AUTH_MODEL.split('.')
-    return getattr(importlib.import_module(user_app), user_model_name)

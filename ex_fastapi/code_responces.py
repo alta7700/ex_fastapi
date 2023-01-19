@@ -2,7 +2,7 @@ from __future__ import annotations
 from enum import Enum
 from itertools import groupby
 from types import DynamicClassAttribute
-from typing import Any
+from typing import Any, Type
 
 from fastapi import BackgroundTasks
 
@@ -101,3 +101,20 @@ class BaseCodes(Enum):
                 },
             }
         return responses
+
+
+class DefaultCodes(BaseCodes):
+    OK = 200, 'ОК'
+    not_found = 404, 'Не нашёл подходящий элемент :('
+    not_unique_err = 400, 'Поле должно быть уникальным ({})'
+
+
+class AuthErrors(BaseCodes):
+    invalid_token = 401, "Неверный авторизационный токен"
+    expired_token = 401, "Истёк срок авторизации"
+    not_authenticated = 401, "Не авторизован"
+    permission_denied = 403, "Недостаточно прав"
+
+    @classmethod
+    def all_errors(cls) -> tuple:
+        return cls.invalid_token, cls.expired_token, cls.not_authenticated

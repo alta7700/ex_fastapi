@@ -4,7 +4,7 @@ from typing import Any, Optional
 from fastapi import HTTPException, BackgroundTasks
 from starlette.responses import JSONResponse
 
-from .pydantic import CamelModel
+from ex_fastapi.pydantic import CamelModel
 
 
 class DefaultJSONEncoder(json.JSONEncoder):

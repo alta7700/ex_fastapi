@@ -1,24 +1,23 @@
-from typing import Type, TypeVar, Generic
+from typing import Type, Generic, TypeVar
 
-from fastapi import Response
 from passlib.context import CryptContext
 
-from ex_fastapi.auth.schemas import PasswordsPair
+from ex_fastapi.schemas import PasswordsPair
 
 
-USER = TypeVar("USER")
+USER_MODEL = TypeVar("USER_MODEL")
 
 
-class BaseUserRepository(Generic[USER]):
-    model: Type[USER]
-    user: USER
+class BaseUserRepository(Generic[USER_MODEL]):
+    model: Type[USER_MODEL]
+    user: USER_MODEL
     pwd_context = CryptContext(schemes=["md5_crypt"])
 
     def __init__(self, user):
         self.user = user
 
     @classmethod
-    async def create_user(cls, data: PasswordsPair, should_exclude: set[str], **kwargs) -> USER:
+    async def create_user(cls, data: PasswordsPair, should_exclude: set[str], **kwargs) -> USER_MODEL:
         raise NotImplementedError
 
     def set_password(self, password: str) -> None:
@@ -56,8 +55,8 @@ class BaseUserRepository(Generic[USER]):
     async def can_login(self):
         raise NotImplementedError
 
-    async def get_permissions(self):
+    def get_permissions(self):
         raise NotImplementedError
 
-    async def has_permissions(self, *perms):
+    def has_permissions(self, *perms):
         raise NotImplementedError

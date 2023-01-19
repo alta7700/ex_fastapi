@@ -1,19 +1,21 @@
 from datetime import timedelta, datetime
-from typing import Any, Type, Literal
+from typing import Any
 
 from fastapi import Response
 
-from ex_fastapi import CamelModel
 from ex_fastapi.default_response import DefaultJSONEncoder
-from .schemas import _TokenIssue, _TokenPair
+from ex_fastapi.schemas import TokenIssue, TokenPair
+from ex_fastapi.settings import get_settings_obj
 from .config import BaseJWTConfig, TokenTypes
-from ..settings import get_settings
+
 
 LIFETIME = dict[TokenTypes, int]
 lifetime_default: LIFETIME = {
     TokenTypes.access: int(timedelta(minutes=5).total_seconds()),
     TokenTypes.refresh: int(timedelta(days=10).total_seconds()),
 }
+settings_obj = get_settings_obj()
+COOKIE_SECURE = settings_obj.COOKIE_SECURE
 
 
 class JWTProvider(BaseJWTConfig):
@@ -28,26 +30,11 @@ class JWTProvider(BaseJWTConfig):
     def encode(self, payload: dict[str, Any]) -> str:
         return self.jwt.encode(payload, self.PRIVATE_KEY, self.ALGORITHM, json_encoder=self.json_encoder)
 
-try:
-    COOKIE_SECURE = get_settings().settings.COOKIE_SECURE
-except Exception as e:
-    print(e)
-    COOKIE_SECURE = None
-
 
 class AuthProvider:
     jwt: JWTProvider
 
-    def __init__(
-            self,
-            token_user: Type[CamelModel],
-            user_me_read: Type[CamelModel],
-            private_key: str,
-            lifetime: LIFETIME = None,
-    ):
-        assert token_user.__config__.orm_mode and user_me_read.__config__.orm_mode
-        self.TokenIssue = _TokenIssue[token_user]
-        self.TokenPair = _TokenPair[user_me_read]
+    def __init__(self, private_key: str, lifetime: LIFETIME = None):
         self.jwt = JWTProvider(private_key, lifetime=lifetime)
 
     @staticmethod
@@ -56,7 +43,7 @@ class AuthProvider:
 
     def create_token(self, user, token_type: TokenTypes, now: int = None) -> str:
         return self.jwt.encode(
-            self.TokenIssue(user=user, type=token_type, iat=now or self.now(), lifetime=self.jwt.lifetime).dict()
+            TokenIssue(user=user, type=token_type, iat=now or self.now(), lifetime=self.jwt.lifetime).dict()
         )
 
     def create_access_token(self, user, now: int = None) -> str:
@@ -65,9 +52,9 @@ class AuthProvider:
     def create_refresh_token(self, user, now: int = None) -> str:
         return self.create_token(user, TokenTypes.refresh, now)
 
-    def get_user_token_pair(self, user) -> _TokenPair:
+    def get_user_token_pair(self, user) -> TokenPair:
         now = self.now()
-        return self.TokenPair(
+        return TokenPair(
             access_token=self.create_access_token(user, now=now),
             refresh_token=self.create_refresh_token(user, now=now),
             user=user

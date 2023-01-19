@@ -1,50 +1,32 @@
-from typing import Type
-
 from fastapi import APIRouter
 
-from ex_fastapi import CRUDRouter, CamelModel
-from ex_fastapi.auth.roles.schemas import get_roles_default_schema, ROLE_SCHEMAS
+from ex_fastapi import CRUDRouter
+from ex_fastapi.global_objects import get_crud_service
+from ex_fastapi.pydantic import get_schema
+from ex_fastapi.models import Permission, PermissionGroup
+from ex_fastapi.schemas import PermissionRead, PermissionGroupRead, PermissionGroupCreate, PermissionGroupEdit
 
 
-def get_roles_router(
-        prefix: str = '/roles',
-        schemas: dict[ROLE_SCHEMAS, Type[CamelModel]] = None
-) -> APIRouter:
-    # TODO: избавиться от импортов
-    from ex_fastapi.contrib.tortoise import TortoiseCRUDService
-    from ex_fastapi.contrib.tortoise.models import ContentType, Permission, PermissionGroup
-    schemas = schemas or {}
+CRUDService = get_crud_service()
 
-    def get_schema(schema_name: ROLE_SCHEMAS) -> Type[CamelModel]:
-        return schemas.get(schema_name) or get_roles_default_schema(schema_name)
 
-    router = APIRouter(prefix=prefix)
+def get_roles_router(prefix: str = '/roles', **kwargs) -> APIRouter:
+    router = APIRouter(prefix=prefix, **kwargs)
 
-    content_types_crud_service = TortoiseCRUDService(
-        ContentType,
-        read_schema=get_schema('ContentTypeRead')
-    )
-    router.include_router(CRUDRouter(
-        service=content_types_crud_service,
-        read_only=True,
-    ))
-
-    permissions_crud_service = TortoiseCRUDService(
+    permissions_crud_service = CRUDService(
         Permission,
-        read_schema=get_schema('PermissionRead'),
-        queryset_select_related=('content_type',)
+        read_schema=get_schema(PermissionRead),
     )
     router.include_router(CRUDRouter(
         service=permissions_crud_service,
         read_only=True,
     ))
 
-    permission_groups_crud_service = TortoiseCRUDService(
+    permission_groups_crud_service = CRUDService(
         PermissionGroup,
-        read_schema=get_schema('PermissionGroupRead'),
-        edit_schema=get_schema('PermissionGroupEdit'),
-        create_schema=get_schema('PermissionGroupCreate'),
-        queryset_prefetch_related=('permissions__content_type',)
+        read_schema=get_schema(PermissionGroupRead),
+        edit_schema=get_schema(PermissionGroupEdit),
+        create_schema=get_schema(PermissionGroupCreate),
     )
     router.include_router(CRUDRouter(
         service=permission_groups_crud_service,

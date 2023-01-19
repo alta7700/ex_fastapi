@@ -1,3 +1,3 @@
-from .auth_errors import AuthErrors
+from .config import TokenTypes
 from .consumer import AuthConsumer
 from .provider import AuthProvider

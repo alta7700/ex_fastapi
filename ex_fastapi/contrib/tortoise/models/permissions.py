@@ -1,13 +1,10 @@
 from tortoise import fields
 
 from .content_type import ContentType
-from .. import Model
+from . import BaseModel
 
 
-__all__ = ["Permission", "PermissionGroup", "PermissionMixin"]
-
-
-class Permission(Model):
+class Permission(BaseModel):
     id: int
     name: str = fields.CharField(max_length=50)
     content_type_id: int
@@ -23,8 +20,12 @@ class Permission(Model):
     def __str__(self):
         return f'Can {self.name} {self.content_type.name}'
 
+    @property
+    def content_type_name(self):
+        return ContentType.get_by_id(self.content_type_id)
 
-class PermissionGroup(Model):
+
+class PermissionGroup(BaseModel):
     id: int
     name: str = fields.CharField(max_length=100, description='Наименование', unique=True)
     permissions: fields.ManyToManyRelation[Permission] = fields.ManyToManyField(
@@ -40,7 +41,7 @@ class PermissionGroup(Model):
         return self.name
 
 
-class PermissionMixin(Model):
+class PermissionMixin(BaseModel):
     permissions: fields.ManyToManyRelation[Permission] = fields.ManyToManyField('models.Permission')
     groups: fields.ManyToManyRelation[PermissionGroup] = fields.ManyToManyField('models.PermissionGroup')
 

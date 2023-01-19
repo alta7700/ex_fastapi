@@ -2,12 +2,10 @@ from typing import Self
 
 from tortoise import fields
 
-from .. import Model
-
-__all__ = ["ContentType"]
+from . import BaseModel
 
 
-class ContentType(Model):
+class ContentType(BaseModel):
     id: int
     name: str = fields.CharField(max_length=50, unique=True)
     instances_by_id: dict[int, Self] = {}

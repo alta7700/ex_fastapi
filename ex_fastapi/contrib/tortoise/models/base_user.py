@@ -1,19 +1,17 @@
-from typing import Literal, Optional, Any, Type
+from typing import Literal, Optional
 from datetime import datetime
 
 from tortoise import fields
 from pydantic import EmailStr
 from ex_fastapi.pydantic import Username, PhoneNumber
 
-from .. import Model
-from . import PermissionMixin, Permission
+from . import BaseModel, PermissionMixin, Permission
 
-__all__ = ["BaseUser", "UserWithPermissions"]
 
 USER_GET_BY_FIELDS = Literal['id', 'email', 'username', 'phone']
 
 
-class BaseUser(Model):
+class BaseUser(BaseModel):
     id: int
     username: Optional[Username] = fields.CharField(max_length=40, unique=True, null=True)
     email: Optional[EmailStr] = fields.CharField(max_length=256, unique=True, null=True)

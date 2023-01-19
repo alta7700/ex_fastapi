@@ -1,40 +1,23 @@
 from datetime import datetime
-from typing import Generic, TypeVar, Any, Optional, Literal, Type
+from typing import Any, Optional
 
 from pydantic import root_validator, validator, EmailStr, Field
 
-from ex_fastapi.pydantic import CamelModel, Password, Username, PhoneNumber, RelatedList, FieldInRelatedModel
-from ex_fastapi.pydantic.camel_model import CamelGeneric
+
+from ex_fastapi.pydantic import CamelModel, Password, Username, PhoneNumber, RelatedList, get_schema
+from ex_fastapi.models import max_len_of, default_of
+from ex_fastapi.global_objects import get_user_model
+from ex_fastapi.schemas import PermissionIDS, PermissionGroupRead, PermissionRead
 from .config import TokenTypes
-from .roles.schemas import get_roles_default_schema
-
-USER = TypeVar('USER', bound=CamelModel)
 
 
-class _Token(CamelGeneric, Generic[USER]):
-    type: TokenTypes
-    user: USER
-    iat: int  # timestamp
-
-
-class _TokenIssue(CamelGeneric, Generic[USER]):
-    type: TokenTypes
-    user: USER
-    iat: int  # timestamp
-    exp: int  # timestamp
-
-    @root_validator(pre=True)
-    def calc_ext(cls, values: dict[str, Any]) -> dict[str, Any]:
-        if 'exp' not in values:
-            seconds = values['lifetime'][values['type']]
-            values["exp"] = values["iat"] + seconds
-        return values
-
-
-class _TokenPair(CamelGeneric, Generic[USER]):
-    access_token: str
-    refresh_token: str
-    user: USER
+__all__ = [
+    "PasswordsPair", "BaseAuthSchema", "AuthSchema", "UserBase",
+    "UserO2ORead", "UserO2OEdit", "UserO2OCreate",
+    "UserRead", "UserMeRead", "UserEdit", "UserCreate",
+    "TokenUser", "Token", "TokenIssue", "TokenPair",
+]
+User = get_user_model()
 
 
 class PasswordsPair(CamelModel):
@@ -79,87 +62,89 @@ class BaseAuthSchema(CamelModel):
         auth_fields = ()
 
 
-USER_SCHEMA = Literal[
-    "UserMeRead", "UserRead", "UserEdit", "UserCreate",
-    "UserO2ORead", "UserO2OEdit", "UserO2OCreate",
-    "AuthSchema", "TokenUser"
-]
-default_schemas: dict[USER_SCHEMA, Type[CamelModel]] = {}
+class UserBase(CamelModel):
+    username: Optional[Username] = Field(max_length=max_len_of(User)('username'))
+    email: Optional[EmailStr]
+    phone: Optional[PhoneNumber]
 
 
-def set_user_default_schemas():
-    # TODO: что-то придумать, чтобы избавиться от импорта
-    from ex_fastapi.contrib.tortoise import max_len_of, default_of, get_user_model
-    from ex_fastapi.contrib.tortoise.models import Permission, PermissionGroup
+class AuthSchema(UserBase, BaseAuthSchema):
+    username: Optional[str] = Field(max_length=max_len_of(User)('username'))
 
-    user_model = get_user_model()
-
-    class UserBase(CamelModel):
-        username: Optional[Username] = Field(max_length=max_len_of(user_model)('username'))
-        email: Optional[EmailStr]
-        phone: Optional[PhoneNumber]
-
-    class AuthSchema(UserBase, BaseAuthSchema):
-        username: Optional[str] = Field(max_length=max_len_of(user_model)('username'))
-
-        class Config(BaseAuthSchema.Config):
-            auth_fields = user_model.AUTH_FIELDS
-
-    class UserO2ORead(UserBase):
-        username: Optional[str]
-        id: int
-        created_at: datetime
-
-        class Config(UserBase.Config):
-            orm_mode = True
-
-    UserO2OEdit = UserBase
-
-    class UserO2OCreate(PasswordsPair, UserBase):
-        password: Optional[Password]
-        re_password: Optional[str]
-
-    class UserRead(UserO2ORead):
-        permissions: RelatedList[FieldInRelatedModel(Permission, 'id', int)]
-        groups: RelatedList[get_roles_default_schema("PermissionGroupRead")]
-        is_superuser: bool
-        is_active: bool
-
-    UserMeRead = UserRead
-
-    class UserEdit(UserBase):
-        permissions: Optional[list[int]]
-        groups: Optional[list[int]]
-        is_superuser: Optional[bool]
-        is_active: Optional[bool]
-
-    class UserCreate(PasswordsPair, UserBase):
-        permissions: list[int] = Field(default=[])
-        groups: list[int] = Field(default=[])
-        is_superuser: Optional[bool] = Field(default=default_of(user_model)('is_superuser'))
-        is_active: Optional[bool] = Field(default=default_of(user_model)('is_active'))
-
-    class TokenUser(CamelModel):
-        id: int
-        is_superuser: bool
-
-        class Config(CamelModel.Config):
-            orm_mode = True
-
-    default_schemas.update({
-        "UserMeRead": UserMeRead,
-        "UserRead": UserRead,
-        "UserEdit": UserEdit,
-        "UserCreate": UserCreate,
-        "UserO2ORead": UserO2ORead,
-        "UserO2OEdit": UserO2OEdit,
-        "UserO2OCreate": UserO2OCreate,
-        "AuthSchema": AuthSchema,
-        "TokenUser": TokenUser,
-    })
+    class Config(BaseAuthSchema.Config):
+        auth_fields = User.AUTH_FIELDS
 
 
-def get_user_default_schema(schema_name: USER_SCHEMA):
-    if not default_schemas:
-        set_user_default_schemas()
-    return default_schemas[schema_name]
+class UserO2ORead(UserBase):
+    username: Optional[str]
+    id: int
+    created_at: datetime
+
+    class Config(UserBase.Config):
+        orm_mode = True
+
+
+UserO2OEdit = UserBase
+
+
+class UserO2OCreate(PasswordsPair, UserBase):
+    password: Optional[Password]
+    re_password: Optional[str]
+
+
+class UserRead(UserO2ORead):
+    permissions: PermissionIDS
+    groups: RelatedList[get_schema(PermissionGroupRead)]
+    is_superuser: bool
+    is_active: bool
+
+
+class UserMeRead(UserO2ORead):
+    all_permissions: RelatedList[PermissionRead]
+    is_superuser: bool
+    is_active: bool
+
+
+class UserEdit(UserBase):
+    permissions: Optional[list[int]]
+    groups: Optional[list[int]]
+    is_superuser: Optional[bool]
+    is_active: Optional[bool]
+
+
+class UserCreate(PasswordsPair, UserBase):
+    permissions: list[int]
+    groups: list[int]
+    is_superuser: Optional[bool] = Field(default=default_of(User)('is_superuser'))
+    is_active: Optional[bool] = Field(default=default_of(User)('is_active'))
+
+
+class TokenUser(CamelModel):
+    id: int
+    is_superuser: bool
+
+    class Config(CamelModel.Config):
+        orm_mode = True
+
+
+class Token(CamelModel):
+    type: TokenTypes
+    user: get_schema(TokenUser)
+    iat: int  # timestamp
+
+
+class TokenIssue(Token):
+    exp: int  # timestamp
+
+    @root_validator(pre=True)
+    def calc_ext(cls, values: dict[str, Any]) -> dict[str, Any]:
+        if 'exp' not in values:
+            seconds = values['lifetime'][values['type']]
+            values["exp"] = values["iat"] + seconds
+        return values
+
+
+class TokenPair(CamelModel):
+    access_token: str
+    refresh_token: str
+    user: get_schema(UserMeRead)

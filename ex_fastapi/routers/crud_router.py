@@ -1,23 +1,22 @@
 from collections.abc import Sequence
 from enum import Enum
-from typing import Callable, Any, Generic, TypeVar, Optional, Type, Literal
+from typing import Callable, Any, Generic, TypeVar, Optional, Literal
 
 from fastapi import Response, APIRouter, Body, Path, Query, params, Depends
 
-from ex_fastapi.default_response import BgHTTPException
 from ex_fastapi import BaseCodes, snake_case, CommaSeparatedOf, lower_camel
-from .base_crud_service import BaseCRUDService, SCHEMA
+from ex_fastapi.global_objects import get_default_codes
+from ex_fastapi.default_response import BgHTTPException
+from . import BaseCRUDService
 from .exceptions import NotUnique, ItemNotFound
 from .utils import pagination_factory, PAGINATION
+
 
 DISPLAY_FIELDS = tuple[str, ...]
 SERVICE = TypeVar('SERVICE', bound=BaseCRUDService)
 
 
-class DefaultCodes(BaseCodes):
-    OK = 200, 'ОК'
-    not_found = 404, 'Не нашёл подходящий элемент :('
-    not_unique_err = 400, 'Поле должно быть уникальным ({})'
+Codes = get_default_codes()
 
 
 DEFAULT_ROUTE = Literal['get_all', 'get_many', 'get_one', 'create', 'edit', 'delete_all', 'delete_many', 'delete_one']
@@ -31,14 +30,12 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
     service: SERVICE
     max_items_get_many_routes: Optional[int]
     max_items_delete_many_routes: Optional[int]
-    codes: Type[BaseCodes | DefaultCodes]
     tree_node_query_alias: str
 
     def __init__(
             self,
             service: SERVICE,
             *,
-            codes: Type[BaseCodes] = DefaultCodes,
             max_items_many_route: Optional[int] = None,
             max_items_get_many_route: Optional[int] = None,
             max_items_delete_many_route: Optional[int] = None,
@@ -57,7 +54,6 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         prefix = '/' + prefix
         super().__init__(prefix=prefix, tags=tags, **kwargs)
 
-        self.codes = codes
         self.max_items_get_many_routes = max_items_get_many_route or max_items_many_route
         self.max_items_delete_many_routes = max_items_delete_many_route or max_items_many_route
         self.read_only = read_only
@@ -188,22 +184,25 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
 
         return route
 
-    def _ok_response_instance(self) -> BaseCodes:
-        return self.codes.OK
+    @classmethod
+    def _ok_response_instance(cls) -> BaseCodes:
+        return Codes.OK
 
     def ok_response(self, **kwargs) -> dict[str, Any]:
         if kwargs:
             return self._ok_response_instance().resp_detail(**kwargs)
         return self._ok_response_instance().resp
 
-    def _not_found_error_instance(self) -> BaseCodes:
-        return self.codes.not_found
+    @classmethod
+    def _not_found_error_instance(cls) -> BaseCodes:
+        return Codes.not_found
 
     def not_found_error(self) -> BgHTTPException:
         return self._not_found_error_instance().err()
 
-    def not_unique_error_instance(self) -> BaseCodes:
-        return self.codes.not_unique_err
+    @classmethod
+    def not_unique_error_instance(cls) -> BaseCodes:
+        return Codes.not_unique_err
 
     def not_unique_error(self, fields: list[str]) -> BgHTTPException:
         return self.not_unique_error_instance().format_err(', '.join(fields), {'fields': fields})
@@ -244,7 +243,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 path = '/one/{item_id}'
                 method = ["GET"]
                 response_model = self.get_read_schema()
-                responses = self.codes.responses(self._not_found_error_instance())
+                responses = Codes.responses(self._not_found_error_instance())
                 dependencies = [*dependencies, Depends(self.service.has_get_permissions())]
             case 'get_tree_node':
                 path = '/tree'
@@ -255,7 +254,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 path = ''
                 method = ["POST"]
                 response_model = self.get_read_schema()
-                responses = self.codes.responses(
+                responses = Codes.responses(
                     (self.not_unique_error_instance(), {'fields': ['поле1', 'поле2']})
                 )
                 status = 201
@@ -264,7 +263,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 path = '/{item_id}'
                 method = ["PATCH"]
                 response_model = self.get_read_schema()
-                responses = self.codes.responses(
+                responses = Codes.responses(
                     self._not_found_error_instance(),
                     (self.not_unique_error_instance(), {'fields': ['поле1', 'поле2']})
                 )
@@ -273,13 +272,13 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 path = '/many'
                 method = ["DELETE"]
                 # don`t need response model, responses has one with status 200
-                responses = self.codes.responses((self._ok_response_instance(), {'count': 30}), )
+                responses = Codes.responses((self._ok_response_instance(), {'count': 30}), )
                 dependencies = [*dependencies, Depends(self.service.has_delete_permissions())]
             case 'delete_one':
                 path = '/{item_id}'
                 method = ["DELETE"]
                 # don`t need response model, responses has one with status 200
-                responses = self.codes.responses((self._ok_response_instance(), {'item': 77}), )
+                responses = Codes.responses((self._ok_response_instance(), {'item': 77}), )
                 dependencies = [*dependencies, Depends(self.service.has_delete_permissions())]
             case _:
                 raise Exception(f'Unknown name of route: {route_name}.\n'
@@ -298,16 +297,16 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             **route_kwargs,
         )
 
-    def get_read_schema(self, generate_if_not_exist: bool = True) -> Type[SCHEMA]:
+    def get_read_schema(self, generate_if_not_exist: bool = True):
         return self.service.get_read_schema(generate_if_not_exist=generate_if_not_exist)
 
-    def get_list_item_schema(self, generate_if_not_exist: bool = True) -> Type[SCHEMA]:
+    def get_list_item_schema(self, generate_if_not_exist: bool = True):
         return self.service.get_list_item_schema(generate_if_not_exist=generate_if_not_exist)
 
-    def get_create_schema(self, generate_if_not_exist: bool = True) -> Type[SCHEMA]:
+    def get_create_schema(self, generate_if_not_exist: bool = True):
         return self.service.get_create_schema(generate_if_not_exist=generate_if_not_exist)
 
-    def get_edit_schema(self, generate_if_not_exist: bool = True) -> Type[SCHEMA]:
+    def get_edit_schema(self, generate_if_not_exist: bool = True):
         return self.service.get_edit_schema(generate_if_not_exist=generate_if_not_exist)
 
 
