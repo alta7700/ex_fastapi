@@ -5,11 +5,13 @@ from fastapi import Cookie, Header
 from jwt import InvalidSignatureError, ExpiredSignatureError, DecodeError
 
 from ex_fastapi.schemas import Token
+from ex_fastapi.pydantic import get_schema
 from ex_fastapi.global_objects import get_auth_errors
 from .config import BaseJWTConfig, TokenTypes
 
 
 AuthErrors = get_auth_errors()
+Token = get_schema(Token)
 
 
 class JWTConsumer(BaseJWTConfig):

@@ -5,9 +5,13 @@ from fastapi import Response
 
 from ex_fastapi.default_response import DefaultJSONEncoder
 from ex_fastapi.schemas import TokenIssue, TokenPair
+from ex_fastapi.pydantic import get_schema
 from ex_fastapi.settings import get_settings_obj
 from .config import BaseJWTConfig, TokenTypes
 
+
+TokenIssue = get_schema(TokenIssue)
+TokenPair = get_schema(TokenPair)
 
 LIFETIME = dict[TokenTypes, int]
 lifetime_default: LIFETIME = {
