@@ -1,14 +1,15 @@
 from collections.abc import Sequence
 from enum import Enum
-from typing import Callable, Any, Generic, TypeVar, Optional, Literal
+from typing import Callable, Any, Generic, TypeVar, Optional, Literal, Type
 
-from fastapi import Response, APIRouter, Body, Path, Query, params, Depends
+from fastapi import Response, Request, APIRouter, Body, Path, Query, params, Depends
 
 from ex_fastapi import BaseCodes, snake_case, CommaSeparatedOf, lower_camel
 from ex_fastapi.global_objects import get_default_codes
 from ex_fastapi.default_response import BgHTTPException
 from . import BaseCRUDService
 from .exceptions import NotUnique, ItemNotFound
+from .filters import BaseFilter
 from .utils import pagination_factory, PAGINATION
 
 
@@ -31,6 +32,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
     max_items_get_many_routes: Optional[int]
     max_items_delete_many_routes: Optional[int]
     tree_node_query_alias: str
+    filters: list[Type[BaseFilter]] | bool
 
     def __init__(
             self,
@@ -41,6 +43,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             max_items_delete_many_route: Optional[int] = None,
             prefix: str = None,
             tags: Optional[list[str | Enum]] = None,
+            filters: list[Type[BaseFilter]] | bool = None,
             auto_routes_only_dependencies: DEPENDENCIES = None,
             routes_kwargs: dict[ROUTE, bool | dict[str, Any]] = None,
             add_tree_routes: bool = False,
@@ -66,6 +69,10 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             routes_names = *routes_names, *self.tree_route_names()
             self.tree_node_query_alias = tree_node_query_alias or lower_camel(self.service.node_key)
 
+        if filters is None:
+            filters = []
+        self.filters = filters
+
         for route_name in routes_names:
             route_data = routes_kwargs.get(route_name, True)
             if route_data is False:
@@ -75,15 +82,16 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
     def _get_all_route(self) -> Callable[..., Any]:
         get_all = self.service.get_all
         list_item_schema = self.get_list_item_schema()
+        filters = self.filters
 
         async def route(
                 response: Response,
                 pagination: PAGINATION = pagination_factory(),
-                sort: CommaSeparatedOf(str, wrapper=snake_case, in_query=True) = Query(None)
-                # TODO: filters
+                sort: CommaSeparatedOf(str, wrapper=snake_case, in_query=True) = Query(None),
+                applied_filters = Depends(get_filters(filters))
         ):
             skip, limit = pagination
-            result, total = await get_all(skip, limit, sort)
+            result, total = await get_all(skip, limit, sort, filters=applied_filters)
             response.headers.append('X-Total-Count', str(total))
             return [list_item_schema.from_orm(r) for r in result]
 
@@ -325,6 +333,13 @@ def get_route_kwargs(
         if kwarg not in available_api_route_kwargs:
             del route_data[kwarg]
     return route_data
+
+
+def get_filters(filters: list[Type[BaseFilter]]):
+    def wrapper(request: Request) -> list[BaseFilter]:
+        qp = request.query_params
+        return [final_f for f in filters if (final_f := f.from_qs(qp))]
+    return wrapper
 
 
 available_api_route_kwargs = [

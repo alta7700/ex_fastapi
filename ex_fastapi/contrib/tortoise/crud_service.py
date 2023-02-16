@@ -10,9 +10,9 @@ from tortoise.transactions import in_transaction
 from ex_fastapi import CamelModel
 from ex_fastapi.routers.base_crud_service import BaseCRUDService, PK, Handler
 from ex_fastapi.routers.exceptions import ItemNotFound, NotUnique
+from ex_fastapi.routers.filters import BaseFilter
 from . import BaseModel
 from .auth_dependencies import user_with_perms
-
 
 TORTOISE_MODEL = TypeVar('TORTOISE_MODEL', bound=BaseModel)
 
@@ -77,23 +77,20 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             self,
             skip: Optional[int], limit: Optional[int],
             sort: list[str],
-            # filters:
-            *args: Q,
-            **kwargs
+            filters: list[BaseFilter],
     ) -> tuple[list[TORTOISE_MODEL], int]:
         query = self.get_queryset()
-        total_query = query.count()
         if sort:
             query = query.order_by(*sort)
         if skip:
             query = query.offset(skip)
         if limit:
             query = query.limit(limit)
-        if args or kwargs:
-            query = query.filter(*args, **kwargs)
+        for f in filters:
+            query = f.filter(query)
         async with in_transaction():
             result = await query
-            count = await total_query
+            count = await query.count()
         return result, count
 
     def _get_many_queryset(self, item_ids: list[PK], *args: Q, **kwargs) -> QuerySet[TORTOISE_MODEL]:

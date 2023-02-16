@@ -3,7 +3,7 @@ from typing import Type, Any, TypeVar, Generic, Optional, Protocol
 from uuid import UUID
 
 from ex_fastapi.pydantic import CamelModel
-
+from .filters import BaseFilter
 
 PK = TypeVar('PK', int, UUID)
 DB_MODEL = TypeVar('DB_MODEL')
@@ -59,7 +59,7 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
             self,
             skip: Optional[int], limit: Optional[int],
             sort: list[str],
-            **kwargs
+            filters: list[BaseFilter],
     ) -> tuple[list[DB_MODEL], int]:
         raise NotImplementedError()
 

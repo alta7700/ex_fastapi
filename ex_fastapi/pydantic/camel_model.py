@@ -16,8 +16,11 @@ def snake_case(string: str) -> str:
 
 
 def lower_camel(string: str) -> str:
-    temp = string.split('_')
-    return temp[0] + ''.join(elem.title() for elem in temp[1:])
+    fragments = []
+    for frag in string.split('__'):
+        temp = frag.split('_')
+        fragments.append(temp[0] + ''.join(elem.title() for elem in temp[1:]))
+    return '__'.join(fragments)
 
 
 try:
