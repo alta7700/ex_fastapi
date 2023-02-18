@@ -3,8 +3,7 @@ from typing import Any, Optional
 
 from pydantic import root_validator, validator, EmailStr, Field
 
-
-from ex_fastapi.pydantic import CamelModel, Password, Username, PhoneNumber, RelatedList, get_schema
+from ex_fastapi.pydantic import CamelModel, CamelModelORM, Password, Username, PhoneNumber, RelatedList
 from ex_fastapi.models import max_len_of, default_of
 from ex_fastapi.global_objects import get_user_model
 from ex_fastapi.schemas import PermissionIDS, PermissionGroupRead, PermissionRead
@@ -84,7 +83,8 @@ class UserO2ORead(UserBase):
         orm_mode = True
 
 
-UserO2OEdit = UserBase
+class UserO2OEdit(UserBase):
+    pass
 
 
 class UserO2OCreate(PasswordsPair, UserBase):
@@ -94,7 +94,7 @@ class UserO2OCreate(PasswordsPair, UserBase):
 
 class UserRead(UserO2ORead):
     permissions: PermissionIDS
-    groups: RelatedList[get_schema(PermissionGroupRead)]
+    groups: RelatedList[PermissionGroupRead]
     is_superuser: bool
     is_active: bool
 
@@ -119,21 +119,18 @@ class UserCreate(PasswordsPair, UserBase):
     is_active: Optional[bool] = Field(default=default_of(User)('is_active'))
 
 
-class TokenUser(CamelModel):
+class TokenUser(CamelModelORM):
     id: int
     is_superuser: bool
-
-    class Config(CamelModel.Config):
-        orm_mode = True
 
 
 class Token(CamelModel):
     type: TokenTypes
-    user: get_schema(TokenUser)
+    user: TokenUser
     iat: int  # timestamp
 
 
-class TokenIssue(get_schema(Token)):
+class TokenIssue(Token):
     exp: int  # timestamp
 
     @root_validator(pre=True)
@@ -147,4 +144,4 @@ class TokenIssue(get_schema(Token)):
 class TokenPair(CamelModel):
     access_token: str
     refresh_token: str
-    user: get_schema(UserMeRead)
+    user: UserMeRead

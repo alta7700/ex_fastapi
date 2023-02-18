@@ -36,9 +36,9 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
             node_key: str = 'parent_id',
             create_handlers: dict[Type[DB_MODEL], Handler] = None,
             edit_handlers: dict[Type[DB_MODEL], Handler] = None,
-            **kwargs: object,
+            **kwargs,
     ) -> None:
-        raise NotImplementedError()
+        pass
 
     async def get_queryset(self) -> Any:
         raise NotImplementedError()

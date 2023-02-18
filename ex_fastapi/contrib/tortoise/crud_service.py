@@ -42,6 +42,7 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             edit_handlers: dict[Type[BaseModel], Handler] = None,
             **kwargs,
     ):
+        super().__init__(db_model)  # чтобы не ругался
         self.model = db_model
         self.pk_field_type = self.model._meta.pk.field_type
         self._pk = self.model._meta.pk_attr
@@ -118,8 +119,8 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             **kwargs
     ) -> TORTOISE_MODEL:
         model: Type[BaseModel] = model or self.model
-        fk_fields = self.exclude_fk(model, data)
-        m2m_fields = self.exclude_m2m(model, data)
+        fk_fields = exclude_fk(model, data)
+        m2m_fields = exclude_m2m(model, data)
         exclude_dict = get_exclude_dict(exclude or set())
         should_exclude = {*exclude_dict['__root__'], *fk_fields, *m2m_fields}
         instance: BaseModel = await self.handle_create(model)(data, should_exclude, **kwargs)
@@ -174,8 +175,8 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             model = item_id_or_instance.__class__
         else:
             model = self.model
-        fk_fields = self.exclude_fk(model, data)
-        m2m_fields = self.exclude_m2m(model, data)
+        fk_fields = exclude_fk(model, data)
+        m2m_fields = exclude_m2m(model, data)
         exclude_dict = get_exclude_dict(exclude or set())
         should_exclude = {*exclude_dict['__root__'], *fk_fields, *m2m_fields}
         if isinstance(item_id_or_instance, BaseModel):
@@ -224,21 +225,6 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
     async def delete_one(self, item_id: PK, *args: Q, **kwargs) -> None:
         item = await self.get_one(item_id, *args, **kwargs)
         await item.delete()
-
-    def exclude_fk(self, model: Type[BaseModel], data: CamelModel) -> set[str]:
-        opts = model._meta
-        return self.exclude_fields_from_data(data, *opts.fk_fields, *opts.o2o_fields)
-
-    def exclude_m2m(self, model: Type[BaseModel], data: CamelModel) -> set[str]:
-        return self.exclude_fields_from_data(data, *model._meta.m2m_fields)
-
-    @classmethod
-    def exclude_fields_from_data(cls, data: CamelModel, *fields: str) -> set[str]:
-        m2m_fields: set[str] = set()
-        for field_name in fields:
-            if getattr(data, field_name, None) is not None:
-                m2m_fields.add(field_name)
-        return m2m_fields
 
     def handle_create(self, model: Type[BaseModel]) -> Handler:
         if handler := self.create_handlers.get(model):
@@ -298,3 +284,20 @@ def get_exclude_dict(fields: set[str]) -> dict[str, set[str]]:
             base, _, field_in_related = field.partition('.')
             exclude_dict[base].add(field_in_related)
     return exclude_dict
+
+
+def exclude_fk(model: Type[BaseModel], data: CamelModel) -> set[str]:
+    opts = model._meta
+    return exclude_fields_from_data(data, *opts.fk_fields, *opts.o2o_fields)
+
+
+def exclude_m2m(model: Type[BaseModel], data: CamelModel) -> set[str]:
+    return exclude_fields_from_data(data, *model._meta.m2m_fields)
+
+
+def exclude_fields_from_data(data: CamelModel, *fields: str) -> set[str]:
+    m2m_fields: set[str] = set()
+    for field_name in fields:
+        if getattr(data, field_name, None) is not None:
+            m2m_fields.add(field_name)
+    return m2m_fields

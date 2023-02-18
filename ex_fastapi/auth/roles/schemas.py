@@ -6,7 +6,10 @@ from ex_fastapi.pydantic import CamelModel, CamelModelORM, RelatedList, FieldInR
 from ex_fastapi.models import Permission, PermissionGroup, max_len_of
 
 
-__all__ = ["PermissionRead", "PermissionIDS", "PermissionGroupRead", "PermissionGroupCreate", "PermissionGroupEdit"]
+__all__ = [
+    "PermissionRead", "PermissionIDS",
+    "PermissionGroupRead", "PermissionGroupCreate", "PermissionGroupEdit"
+]
 
 
 max_len_pg = max_len_of(PermissionGroup)
