@@ -30,7 +30,7 @@ class BaseUserRepository(Generic[USER_MODEL]):
         return self.pwd_context.hash(self.get_fake_password(password))
 
     def verify_password(self, password: str) -> bool:
-        return self.pwd_context.verify(self.get_fake_password(password), self.user.password_hash)
+        raise NotImplementedError
 
     @property
     def save(self):
