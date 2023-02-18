@@ -1,4 +1,4 @@
-from typing import TypedDict, Self
+from typing import TypedDict, Self, Any
 
 from . import BaseFilter, BaseFilterValidator
 
@@ -16,11 +16,23 @@ class IntFilterValidator(BaseFilterValidator[IntFilterOpts], int):
     def validate(cls, v: str) -> Self:
         v = int(v)
         if cls.min_value is not None and v < cls.min_value:
-            raise ValueError('Value is too short')
+            raise ValueError(f'Значение меньше минимального ({cls.min_value})')
         if cls.max_value is not None and v > cls.max_value:
-            raise ValueError('Value is too long')
+            raise ValueError(f'Значение больше максимального ({cls.max_value})')
         return cls(v)
 
+    @classmethod
+    def __schema__(cls) -> dict[str, Any]:
+        return {
+            'type': 'number',
+            'minimum': cls.min_value,
+            'maximum': cls.max_value,
+        }
 
-class BaseIntFilter(BaseFilter[int, IntFilterOpts]):
+
+class BaseIntFilter(BaseFilter[int, IntFilterOpts, IntFilterValidator]):
     base_validator = IntFilterValidator
+
+    @classmethod
+    def describe(cls):
+        return 'Обычный числовой фильтр, вводи число'

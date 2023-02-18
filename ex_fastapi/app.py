@@ -3,8 +3,7 @@ from typing import Literal
 from fastapi import FastAPI
 
 from .default_validators import \
-    add_HTTPException_handler, \
-    add_validation_error_handler, \
+    default_exception_handlers, \
     change_openapi_validation_error_schema
 
 
@@ -17,6 +16,8 @@ class ExFastAPI(FastAPI):
             **kwargs
     ) -> None:
         kwargs.setdefault('swagger_ui_parameters', {"operationsSorter": "method"})
+        exception_handlers = kwargs.get('exception_handlers', {})
+        kwargs['exception_handlers'] = {**default_exception_handlers, **exception_handlers}
         super().__init__(**kwargs)
 
         if db_config:
@@ -33,8 +34,6 @@ class ExFastAPI(FastAPI):
                 self.router.on_shutdown.append(db_on_shutdown)
 
         async def default_on_start():
-            add_HTTPException_handler(self)
-            add_validation_error_handler(self)
             try:
                 change_openapi_validation_error_schema(self)
             except KeyError:

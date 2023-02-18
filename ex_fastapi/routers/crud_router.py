@@ -3,6 +3,8 @@ from enum import Enum
 from typing import Callable, Any, Generic, TypeVar, Optional, Literal, Type
 
 from fastapi import Response, Request, APIRouter, Body, Path, Query, params, Depends
+from fastapi.exceptions import RequestValidationError
+from pydantic.error_wrappers import ErrorWrapper
 
 from ex_fastapi import BaseCodes, snake_case, CommaSeparatedOf, lower_camel
 from ex_fastapi.global_objects import get_default_codes
@@ -88,8 +90,9 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 response: Response,
                 pagination: PAGINATION = pagination_factory(),
                 sort: CommaSeparatedOf(str, wrapper=snake_case, in_query=True) = Query(None),
-                applied_filters = Depends(get_filters(filters))
+                applied_filters: list[BaseFilter] = Depends(get_filters(filters))
         ):
+            raise_if_error_in_filters(applied_filters)
             skip, limit = pagination
             result, total = await get_all(skip, limit, sort, filters=applied_filters)
             response.headers.append('X-Total-Count', str(total))
@@ -236,12 +239,14 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         responses = {}
         response_model = None
         status = 200
+        openapi_extra = None
         match route_name:
             case 'get_all':
                 path = '/all'
                 method = ["GET"]
                 response_model = list[self.get_list_item_schema()]
                 dependencies = [*dependencies, Depends(self.service.has_get_permissions())]
+                openapi_extra = {'parameters': [f.query_openapi_desc() for f in self.filters]}
             case 'get_many':
                 path = '/many'
                 method = ["GET"]
@@ -302,6 +307,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             response_model=response_model,
             summary=summary,
             status_code=status,
+            openapi_extra=openapi_extra,
             **route_kwargs,
         )
 
@@ -340,6 +346,12 @@ def get_filters(filters: list[Type[BaseFilter]]):
         qp = request.query_params
         return [final_f for f in filters if (final_f := f.from_qs(qp))]
     return wrapper
+
+
+def raise_if_error_in_filters(filters: list[BaseFilter]) -> None:
+    errors = [ErrorWrapper(f.error, loc=("filters", f.camel_source)) for f in filters if f.error is not None]
+    if errors:
+        raise RequestValidationError(errors)
 
 
 available_api_route_kwargs = [

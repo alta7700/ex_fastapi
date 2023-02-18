@@ -11,7 +11,7 @@ __all__ = ["StrFilter", "IntFilter", "BoolFilter"]
 
 class SimpleFilterMixin:
     def filter(self, query: QuerySet) -> QuerySet:
-        return query.filter(**{self.source: self.value})
+        return query.filter(**{self.field_name: self.value})
 
 
 class StrFilter(SimpleFilterMixin, BaseStrFilter):

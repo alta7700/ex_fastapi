@@ -1,7 +1,7 @@
-from typing import TypedDict, Self
+from typing import TypedDict, Self, Any
 
 from . import BaseFilter, BaseFilterValidator
-
+from pydantic.schema import model_type_schema
 
 class StrFilterOpts(TypedDict, total=False):
     min_length: int
@@ -21,6 +21,19 @@ class StrFilterValidator(BaseFilterValidator[StrFilterOpts], str):
             raise ValueError('Value is too long')
         return cls(v)
 
+    @classmethod
+    def __schema__(cls) -> dict[str, Any]:
+        return {
+            'type': 'string',
+            'example': 'Просто строка',
+            'min_length': cls.min_length,
+            'max_length': cls.max_length,
+        }
 
-class BaseStrFilter(BaseFilter[str, StrFilterOpts]):
+
+class BaseStrFilter(BaseFilter[str, StrFilterOpts, StrFilterValidator]):
     base_validator = StrFilterValidator
+
+    @classmethod
+    def describe(cls):
+        return 'Обычный строковый фильтр, вводи строку'
