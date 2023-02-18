@@ -21,9 +21,10 @@ class Password(str):
     def validate(cls, v: str):
         password = v.strip()
         if len(password) < 8:
-            raise ValueError('Слишком короткий пароль (минимум 8)')
+            raise ValueError('shortPassword')
         if len(password) > 30:
-            raise ValueError('Слишком длинный пароль (максимум 30)')
+            raise ValueError('longPassword')
         if not cls.pattern.match(password):
-            raise ValueError('Некорректный пароль, Минимум одна заглавная, прописная, цифра и спецсимвол (#?!@$%^&*-)')
+            # Incorrect password. Minimum 1 uppercase, 1 lowercase, 1 digit and 1 symbol (#?!@$%^&*-)
+            raise ValueError('incorrectPassword')
         return cls(password)
