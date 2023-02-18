@@ -44,7 +44,7 @@ class BaseSettings(PydanticBaseSettings):
         return int(timedelta(days=self.REFRESH_TOKEN_LIFETIME).total_seconds())
 
 
-def get_settings(var: str = 'settings', default: Any = '__undefined__') -> Any:
+def get_settings(var: str, default: Any = '__undefined__') -> Any:
     settings = import_module('settings')
     match var:
         case 'db_name':
@@ -56,4 +56,4 @@ def get_settings(var: str = 'settings', default: Any = '__undefined__') -> Any:
 
 
 def get_settings_obj() -> BaseSettings:
-    return get_settings()
+    return get_settings('settings')
