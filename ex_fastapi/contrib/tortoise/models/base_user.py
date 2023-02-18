@@ -37,7 +37,3 @@ class BaseUser(BaseModel):
 class UserWithPermissions(BaseUser, PermissionMixin):
     class Meta:
         abstract = True
-
-    @property
-    def all_permissions(self) -> set[Permission]:
-        return {*self.permissions, *(p for g in self.groups for p in g.permissions)}

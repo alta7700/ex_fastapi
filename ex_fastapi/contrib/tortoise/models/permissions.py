@@ -47,3 +47,7 @@ class PermissionMixin(BaseModel):
 
     class Meta:
         abstract = True
+
+    @property
+    def all_permissions(self) -> set[Permission]:
+        return {*self.permissions, *(p for g in self.groups for p in g.permissions)}
