@@ -17,7 +17,7 @@ class BaseUserRepository(Generic[USER_MODEL]):
         self.user = user
 
     @classmethod
-    async def create_user(cls, data: PasswordsPair, should_exclude: set[str], **kwargs) -> USER_MODEL:
+    async def create_user(cls, data: PasswordsPair, should_exclude: set[str] = None, **kwargs) -> USER_MODEL:
         raise NotImplementedError
 
     def set_password(self, password: str) -> None:

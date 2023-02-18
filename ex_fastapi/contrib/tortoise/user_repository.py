@@ -18,8 +18,8 @@ class TortoiseUserRepository(BaseUserRepository[UserWithPermissions]):
     pwd_context = CryptContext(schemes=["md5_crypt"])
 
     @classmethod
-    async def create_user(cls, data: PasswordsPair, should_exclude: set[str], **kwargs) -> UserWithPermissions:
-        self = cls(cls.model(**data.dict(exclude={'password', 're_password', *should_exclude}), **kwargs))
+    async def create_user(cls, data: PasswordsPair, should_exclude: set[str] = None, **kwargs) -> UserWithPermissions:
+        self = cls(cls.model(**data.dict(exclude={'password', 're_password', *(should_exclude or set())}), **kwargs))
         self.set_password(data.password)
         return self.user
 
