@@ -133,7 +133,7 @@ class Token(CamelModel):
     iat: int  # timestamp
 
 
-class TokenIssue(Token):
+class TokenIssue(get_schema(Token)):
     exp: int  # timestamp
 
     @root_validator(pre=True)
