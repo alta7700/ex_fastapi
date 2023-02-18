@@ -6,7 +6,6 @@ from fastapi import Response
 from ex_fastapi.default_response import DefaultJSONEncoder
 from ex_fastapi.schemas import TokenIssue, TokenPair
 from ex_fastapi.pydantic import get_schema
-from ex_fastapi.settings import get_settings_obj
 from .config import BaseJWTConfig, TokenTypes
 
 
@@ -18,8 +17,6 @@ lifetime_default: LIFETIME = {
     TokenTypes.access: int(timedelta(minutes=5).total_seconds()),
     TokenTypes.refresh: int(timedelta(days=10).total_seconds()),
 }
-settings_obj = get_settings_obj()
-COOKIE_SECURE = settings_obj.COOKIE_SECURE
 
 
 class JWTProvider(BaseJWTConfig):
@@ -69,9 +66,20 @@ class AuthProvider:
         response.set_cookie(
             key='Token', value="Bearer " + access_token,
             path='/api', max_age=self.jwt.lifetime[TokenTypes.access],
-            httponly=True, secure=COOKIE_SECURE
+            httponly=True, secure=get_cookie_secure()
         )
 
     @classmethod
     def delete_auth_cookie(cls, response: Response):
-        response.delete_cookie(key='Token', path='/api', httponly=True, secure=COOKIE_SECURE)
+        response.delete_cookie(key='Token', path='/api', httponly=True, secure=get_cookie_secure())
+
+
+COOKIE_SECURE = None
+
+
+def get_cookie_secure() -> bool:
+    global COOKIE_SECURE
+    if COOKIE_SECURE is None:
+        from ex_fastapi.settings import get_settings_obj
+        COOKIE_SECURE = get_settings_obj().COOKIE_SECURE
+    return COOKIE_SECURE

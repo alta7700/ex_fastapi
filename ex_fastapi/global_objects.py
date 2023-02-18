@@ -11,8 +11,6 @@ if TYPE_CHECKING:
     from ex_fastapi.routers import BaseCRUDService
     from ex_fastapi.code_responces import DefaultCodes, BaseCodes, AuthErrors
 
-settings_obj = get_settings_obj()
-
 
 def get_default_codes() -> Type["BaseCodes"] | Type["DefaultCodes"]:
     codes_str = get_settings('DEFAULT_CODES', default='codes.Codes')
@@ -66,7 +64,7 @@ def get_auth_consumer() -> "AuthConsumer":
             AUTH_CONSUMER = import_string(auth_consumer_str)
         else:
             from ex_fastapi.auth import AuthConsumer
-            AUTH_CONSUMER = AuthConsumer(public_key=settings_obj.RSA_PUBLIC)
+            AUTH_CONSUMER = AuthConsumer(public_key=get_settings_obj().RSA_PUBLIC)
     return AUTH_CONSUMER
 
 
@@ -78,6 +76,7 @@ def get_auth_provider() -> "AuthProvider":
             AUTH_PROVIDER = import_string(auth_provider_str)
         else:
             from ex_fastapi.auth import AuthProvider, TokenTypes
+            settings_obj = get_settings_obj()
             AUTH_PROVIDER = AuthProvider(
                 private_key=settings_obj.RSA_PRIVATE,
                 lifetime={
