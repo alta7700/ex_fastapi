@@ -13,7 +13,7 @@ from .config import TokenTypes
 __all__ = [
     "PasswordsPair", "BaseAuthSchema", "AuthSchema", "UserBase",
     "UserO2ORead", "UserO2OEdit", "UserO2OCreate",
-    "UserRead", "UserMeRead", "UserEdit", "UserCreate",
+    "UserRead", "UserMeRead", "UserEdit", "UserMeEdit", "UserCreate", "UserRegistration",
     "TokenUser", "Token", "TokenIssue", "TokenPair",
 ]
 User = get_user_model()
@@ -27,7 +27,7 @@ class PasswordsPair(CamelModel):
     def passwords_equal(cls, v: str, values: dict[str, Any]):
         if pw := values.get('password'):
             if v != pw:
-                raise ValueError("Пароли не совпадают")
+                raise ValueError("passwordsMismatch")
         return v
 
 
@@ -112,11 +112,19 @@ class UserEdit(UserBase):
     is_active: Optional[bool]
 
 
+class UserMeEdit(UserBase):
+    pass
+
+
 class UserCreate(PasswordsPair, UserBase):
     permissions: list[int]
     groups: list[int]
     is_superuser: Optional[bool] = Field(default=default_of(User)('is_superuser'))
     is_active: Optional[bool] = Field(default=default_of(User)('is_active'))
+
+
+class UserRegistration(PasswordsPair, UserBase):
+    pass
 
 
 class TokenUser(CamelModelORM):

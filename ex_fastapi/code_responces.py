@@ -5,6 +5,7 @@ from types import DynamicClassAttribute
 from typing import Any, Type
 
 from fastapi import BackgroundTasks
+from starlette import status
 
 from .pydantic import CamelModel, lower_camel
 from .default_response import BgHTTPException
@@ -107,6 +108,12 @@ class DefaultCodes(BaseCodes):
     OK = 200, 'ОК'
     not_found = 404, 'Не нашёл подходящий элемент :('
     not_unique_err = 400, 'Поле должно быть уникальным ({})'
+
+    activation_email = 201, 'We sent activation code to your email.\nCheck spam if you can`t find it.'
+    activation_email_resend = 400, 'Your activation code is expired, we sent new one to your email.\n' \
+                                   'Check spam if you can`t find it.'
+    activation_email_code_incorrect = 400, 'Your activation code is incorrect :('
+    already_active = 400, 'You are already active.\nTry to sign in.'
 
 
 class AuthErrors(BaseCodes):

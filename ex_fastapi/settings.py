@@ -2,10 +2,10 @@ import os
 from importlib import import_module
 from datetime import timedelta
 from enum import Enum
-from typing import Optional, Any
+from pathlib import Path
+from typing import Any
 
-from pydantic import BaseSettings as PydanticBaseSettings, PyObject
-
+from pydantic import BaseSettings as PydanticBaseSettings, DirectoryPath
 
 MODE = os.environ.get('MODE') or 'DEBUG'
 DEBUG = MODE == 'DEBUG'
@@ -23,6 +23,16 @@ if DEBUG:
         env_file = '.env'
 else:
     SettingsConfig = PydanticBaseSettings.Config
+
+try:
+    from fastapi_mail import ConnectionConfig
+
+    class MailingConfig(ConnectionConfig):
+        TEMPLATE_FOLDER: DirectoryPath = Path(__file__).parent / 'templates'
+
+        Config = SettingsConfig
+except ImportError:
+    MailingConfig, ConnectionConfig = None, None
 
 
 class BaseSettings(PydanticBaseSettings):

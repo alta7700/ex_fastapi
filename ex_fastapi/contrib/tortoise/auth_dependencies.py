@@ -9,7 +9,7 @@ from ex_fastapi.pydantic import get_schema
 from ex_fastapi.settings import get_settings
 
 if TYPE_CHECKING:
-    from ex_fastapi.auth import AuthConsumer
+    from ex_fastapi.auth.consumer import AuthConsumer
 
 
 UserRepository = get_user_repository()

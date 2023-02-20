@@ -6,3 +6,5 @@ phonenumbers==8.13.6
 passlib==1.7.4
 PyJWT==2.6.0
 cryptography==39.0.1
+
+fastapi-mail==1.2.5

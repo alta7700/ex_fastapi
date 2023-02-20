@@ -2,6 +2,8 @@ from collections.abc import Sequence
 from typing import Type, Any, TypeVar, Generic, Optional, Protocol
 from uuid import UUID
 
+from fastapi import BackgroundTasks
+
 from ex_fastapi.pydantic import CamelModel
 from .filters import BaseFilter
 
@@ -10,17 +12,27 @@ DB_MODEL = TypeVar('DB_MODEL')
 
 
 class Handler(Protocol):
-    async def __call__(self, data: CamelModel, should_exclude: set[str], **kwargs): ...
+    async def __call__(
+            self,
+            data: CamelModel,
+            should_exclude: set[str] = None,
+            **kwargs
+    ): ...
 
 
 class BaseCRUDService(Generic[PK, DB_MODEL]):
     model: DB_MODEL
+
     read_schema: Type[CamelModel]
     list_item_schema: Type[CamelModel]
     create_schema: Optional[Type[CamelModel]]
     edit_schema: Optional[Type[CamelModel]]
+
     pk_field_type: Type[PK]
     node_key: str
+
+    create_handlers: dict[Type[DB_MODEL], Handler]
+    edit_handlers: dict[Type[DB_MODEL], Handler]
 
     def __init__(
             self,
@@ -36,9 +48,8 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
             node_key: str = 'parent_id',
             create_handlers: dict[Type[DB_MODEL], Handler] = None,
             edit_handlers: dict[Type[DB_MODEL], Handler] = None,
-            **kwargs,
     ) -> None:
-        pass
+        ...
 
     async def get_queryset(self) -> Any:
         raise NotImplementedError()
@@ -60,28 +71,29 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
             skip: Optional[int], limit: Optional[int],
             sort: list[str],
             filters: list[BaseFilter],
+            background_tasks: BackgroundTasks,
     ) -> tuple[list[DB_MODEL], int]:
         raise NotImplementedError()
 
-    async def get_many(self, item_ids: list[PK], **kwargs) -> list[DB_MODEL]:
+    async def get_many(self, item_ids: list[PK], background_tasks: BackgroundTasks, **kwargs) -> list[DB_MODEL]:
         raise NotImplementedError()
 
-    async def get_one(self, item_id: PK, **kwargs) -> DB_MODEL:
+    async def get_one(self, item_id: PK, background_tasks: BackgroundTasks, **kwargs) -> DB_MODEL:
         raise NotImplementedError()
 
-    async def get_tree_node(self, node_id: Optional[PK], **kwargs) -> list[DB_MODEL]:
+    async def get_tree_node(self, node_id: Optional[PK], background_tasks: BackgroundTasks, **kwargs) -> list[DB_MODEL]:
         raise NotImplementedError()
 
-    async def create(self, data: CamelModel, **kwargs) -> DB_MODEL:
+    async def create(self, data: CamelModel, background_tasks: BackgroundTasks, **kwargs) -> DB_MODEL:
         raise NotImplementedError()
 
-    async def edit(self, item_id: PK, data: CamelModel, **kwargs) -> DB_MODEL:
+    async def edit(self, item_id: PK, data: CamelModel, background_tasks: BackgroundTasks, **kwargs) -> DB_MODEL:
         raise NotImplementedError()
 
-    async def delete_many(self, item_ids: list[PK], **kwargs) -> int:
+    async def delete_many(self, item_ids: list[PK], background_tasks: BackgroundTasks, **kwargs) -> int:
         raise NotImplementedError()
 
-    async def delete_one(self, item_id: PK, **kwargs) -> None:
+    async def delete_one(self, item_id: PK, background_tasks: BackgroundTasks, **kwargs) -> None:
         raise NotImplementedError()
 
     def has_create_permissions(self):

@@ -6,6 +6,7 @@ from tortoise.expressions import Q
 from tortoise.fields import ManyToManyRelation
 from tortoise.queryset import QuerySet
 from tortoise.transactions import in_transaction
+from fastapi import BackgroundTasks
 
 from ex_fastapi import CamelModel
 from ex_fastapi.routers.base_crud_service import BaseCRUDService, PK, Handler
@@ -13,6 +14,7 @@ from ex_fastapi.routers.exceptions import ItemNotFound, NotUnique
 from ex_fastapi.routers.filters import BaseFilter
 from . import BaseModel
 from .auth_dependencies import user_with_perms
+
 
 TORTOISE_MODEL = TypeVar('TORTOISE_MODEL', bound=BaseModel)
 
@@ -23,8 +25,8 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
     queryset_prefetch_related: Sequence[str]
     queryset_default_filters: dict[str, Any]
 
-    create_handlers: dict[Type[BaseModel], Handler]
-    edit_handlers: dict[Type[BaseModel], Handler]
+    create_handlers: dict[Type[TORTOISE_MODEL], Handler]
+    edit_handlers: dict[Type[TORTOISE_MODEL], Handler]
 
     def __init__(
             self,
@@ -38,9 +40,8 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             queryset_prefetch_related: Sequence[str] = None,
             queryset_default_filters: dict[str, Any] = None,
             node_key: str = 'parent_id',
-            create_handlers: dict[Type[BaseModel], Handler] = None,
-            edit_handlers: dict[Type[BaseModel], Handler] = None,
-            **kwargs,
+            create_handlers: dict[Type[TORTOISE_MODEL], Handler] = None,
+            edit_handlers: dict[Type[TORTOISE_MODEL], Handler] = None,
     ):
         super().__init__(db_model)  # чтобы не ругался
         self.model = db_model
@@ -79,6 +80,7 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             skip: Optional[int], limit: Optional[int],
             sort: list[str],
             filters: list[BaseFilter],
+            background_tasks: BackgroundTasks,
     ) -> tuple[list[TORTOISE_MODEL], int]:
         query = self.get_queryset()
         if sort:
@@ -97,16 +99,32 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
     def _get_many_queryset(self, item_ids: list[PK], *args: Q, **kwargs) -> QuerySet[TORTOISE_MODEL]:
         return self.get_queryset().filter(*args, **{'pk__in': item_ids, **kwargs})
 
-    async def get_many(self, item_ids: list[PK], **kwargs) -> list[TORTOISE_MODEL]:
+    async def get_many(
+            self,
+            item_ids: list[PK],
+            background_tasks: BackgroundTasks,
+            **kwargs
+    ) -> list[TORTOISE_MODEL]:
         return await self._get_many_queryset(item_ids)
 
-    async def get_one(self, item_id: PK, *args: Q, **kwargs) -> Optional[TORTOISE_MODEL]:
+    async def get_one(
+            self,
+            item_id: PK,
+            background_tasks: BackgroundTasks,
+            *args: Q,
+            **kwargs
+    ) -> Optional[TORTOISE_MODEL]:
         instance = await self.get_queryset().get_or_none(*args, **{'pk': item_id, **kwargs})
         if instance is None:
             raise ItemNotFound()
         return instance
 
-    async def get_tree_node(self, node_id: Optional[PK], *args: Q, **kwargs) -> list[TORTOISE_MODEL]:
+    async def get_tree_node(
+            self,
+            node_id: Optional[PK],
+            background_tasks: BackgroundTasks,
+            *args: Q, **kwargs
+    ) -> list[TORTOISE_MODEL]:
         return await self.get_queryset().filter(*args, **{self.node_key: node_id, **kwargs})
 
     async def create(
@@ -115,51 +133,58 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             *,
             exclude: set[str] = None,
             check_unique: bool = True,
-            model: Type[BaseModel] = None,
+            model: Type[TORTOISE_MODEL] = None,
+            background_tasks: BackgroundTasks = None,
             **kwargs
     ) -> TORTOISE_MODEL:
-        model: Type[BaseModel] = model or self.model
-        fk_fields = exclude_fk(model, data)
+        # TODO: придумать что делать с fk fields
+        model: Type[TORTOISE_MODEL] = model or self.model
+        fk_fields, o2o_fields = exclude_fk_and_o2o(model, data)
         m2m_fields = exclude_m2m(model, data)
         exclude_dict = get_exclude_dict(exclude or set())
-        should_exclude = {*exclude_dict['__root__'], *fk_fields, *m2m_fields}
-        instance: BaseModel = await self.handle_create(model)(data, should_exclude, **kwargs)
+        should_exclude = {*exclude_dict['__root__'], *fk_fields, *o2o_fields, *m2m_fields}
 
         async with in_transaction():
             not_unique = []
-            try:
-                await self.create_fk(instance, fk_fields, data, exclude_dict, check_unique=check_unique)
-            except NotUnique as e:
-                not_unique.extend(e.fields)
             if check_unique:
                 not_unique.extend(await model.check_unique(data.dict(exclude=should_exclude)))
+            instance: TORTOISE_MODEL = await self.handle_create(model)(
+                data, should_exclude=should_exclude, **kwargs
+            )
+            if o2o_fields:
+                try:
+                    await self.create_o2o(instance, o2o_fields, data, exclude_dict, check_unique=check_unique)
+                except NotUnique as e:
+                    not_unique.extend(e.fields)
             if not_unique:
                 raise NotUnique(fields=not_unique)
-            await instance.save(force_create=True)
             await self.save_m2m(instance, data, m2m_fields=m2m_fields, clear=False)
 
         return instance
 
-    async def create_fk(
+    async def create_o2o(
             self,
             instance: TORTOISE_MODEL,
-            fk_fields: set[str],
+            o2o_fields: set[str],
             data: CamelModel,
             exclude_dict: dict[str, set[str]],
             check_unique=True,
     ):
         not_unique = []
-        for field_name in fk_fields:
-            fk_data = getattr(data, field_name)
-            fk_model = instance.__class__._meta.fields_map[field_name].related_model
-            fk_exclude = exclude_dict[field_name]
+        for field_name in o2o_fields:
+            o2o_data = getattr(data, field_name)
+            o2o_model = instance.__class__._meta.fields_map[field_name].related_model
+            o2o_exclude = exclude_dict[field_name]
             try:
-                fk_instance = await self.create(fk_data, exclude=fk_exclude, check_unique=check_unique, model=fk_model)
-                setattr(instance, field_name, fk_instance)
+                o2o_instance = await self.create(
+                    o2o_data, exclude=o2o_exclude, check_unique=check_unique, model=o2o_model
+                )
+                setattr(instance, field_name, o2o_instance)
             except NotUnique as e:
                 not_unique.extend([f'{field_name}.{f}' for f in e.fields])
         if not_unique:
             raise NotUnique(fields=not_unique)
+        await instance.save(force_update=True)
 
     async def edit(
             self,
@@ -168,85 +193,97 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             *args: Q,
             exclude: set[str] = None,
             check_unique: bool = True,
+            background_tasks: BackgroundTasks = None,
             **kwargs
     ) -> TORTOISE_MODEL:
-        model: Type[BaseModel]
+        # TODO: придумать что делать с fk fields
+        model: Type[TORTOISE_MODEL]
         if isinstance(item_id_or_instance, BaseModel):
             model = item_id_or_instance.__class__
         else:
             model = self.model
-        fk_fields = exclude_fk(model, data)
+        fk_fields, o2o_fields = exclude_fk_and_o2o(model, data)
         m2m_fields = exclude_m2m(model, data)
         exclude_dict = get_exclude_dict(exclude or set())
-        should_exclude = {*exclude_dict['__root__'], *fk_fields, *m2m_fields}
+        should_exclude = {*exclude_dict['__root__'], *fk_fields, *o2o_fields, *m2m_fields}
         if isinstance(item_id_or_instance, BaseModel):
             instance = item_id_or_instance
         else:
-            instance = await self.get_one(item_id_or_instance, *args)
-        instance = await self.handle_edit(instance)(data, should_exclude, **kwargs)
+            instance = await self.get_one(item_id=item_id_or_instance, *args)
 
         async with in_transaction():
             not_unique = []
-            try:
-                await self.edit_fk(instance, fk_fields, data, exclude_dict, check_unique)
-            except NotUnique as e:
-                not_unique.extend(e.fields)
             if check_unique:
                 not_unique.extend(await model.check_unique(data.dict(exclude=should_exclude, exclude_unset=True)))
+            await self.handle_edit(instance)(data, should_exclude=should_exclude, **kwargs)
+            if o2o_fields:
+                try:
+                    await self.edit_o2o(instance, o2o_fields, data, exclude_dict, check_unique)
+                except NotUnique as e:
+                    not_unique.extend(e.fields)
             if not_unique:
                 raise NotUnique(fields=not_unique)
-            await instance.save(force_update=True)
             await self.save_m2m(instance, data, m2m_fields=m2m_fields)
         return instance
 
-    async def edit_fk(
+    async def edit_o2o(
             self,
             instance: TORTOISE_MODEL,
-            fk_fields: set[str],
+            o2o_fields: set[str],
             data: CamelModel,
             exclude_dict: dict[str, set[str]],
             check_unique: bool,
     ):
         not_unique = []
-        for field_name in fk_fields:
-            fk_instance = getattr(instance, field_name)
-            fk_data = getattr(data, field_name)
-            fk_exclude = exclude_dict[field_name]
+        for field_name in o2o_fields:
+            o2o_instance = getattr(instance, field_name)
+            o2o_data = getattr(data, field_name)
+            o2o_exclude = exclude_dict[field_name]
             try:
-                await self.edit(fk_instance, fk_data, exclude=fk_exclude, check_unique=check_unique)
+                await self.edit(o2o_instance, o2o_data, exclude=o2o_exclude, check_unique=check_unique)
             except NotUnique as e:
                 not_unique.extend([f'{field_name}.{f}' for f in e.fields])
         if not_unique:
             raise NotUnique(fields=not_unique)
 
-    async def delete_many(self, item_ids: list[PK], *args: Q, **kwargs) -> int:
+    async def delete_many(self, item_ids: list[PK], background_tasks: BackgroundTasks, *args: Q, **kwargs) -> int:
         return await self._get_many_queryset(item_ids, *args, **kwargs).delete()
 
-    async def delete_one(self, item_id: PK, *args: Q, **kwargs) -> None:
-        item = await self.get_one(item_id, *args, **kwargs)
+    async def delete_one(self, item_id: PK, background_tasks: BackgroundTasks, **kwargs) -> None:
+        item = await self.get_one(item_id, background_tasks=background_tasks, **kwargs)
         await item.delete()
 
-    def handle_create(self, model: Type[BaseModel]) -> Handler:
+    def handle_create(self, model: Type[TORTOISE_MODEL]) -> Handler:
         if handler := self.create_handlers.get(model):
             return handler
 
-        async def base_handler(data: CamelModel, should_exclude: set[str], **kwargs) -> BaseModel:
+        async def base_handler(
+                data: CamelModel,
+                should_exclude: set[str] = None,
+                **kwargs
+        ) -> TORTOISE_MODEL:
             data_dict = data.dict(exclude=should_exclude)
             data_dict.update(kwargs)
-            return model(**data_dict)
+            return await model.create(**data_dict)
 
         self.create_handlers[model] = base_handler
         return base_handler
 
-    def handle_edit(self, instance: BaseModel) -> Handler:
+    def handle_edit(self, instance: TORTOISE_MODEL) -> Handler:
         model = instance.__class__
         if handler := self.edit_handlers.get(model):
             return handler
 
-        async def base_handler(data: CamelModel, should_exclude: set[str], **kwargs) -> BaseModel:
+        async def base_handler(
+                data: CamelModel,
+                should_exclude: set[str] = None,
+                **kwargs
+        ) -> TORTOISE_MODEL:
             data_dict = data.dict(exclude=should_exclude, exclude_unset=True)
             data_dict.update(kwargs)
-            return instance.update_from_dict(data_dict)
+            instance.update_from_dict(data_dict)
+            await instance.save(force_update=True)
+            return instance
 
         self.create_handlers[model] = base_handler
         return base_handler
@@ -260,7 +297,7 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             if clear:
                 await rel.clear()
             await rel.add(*(await rel.remote_model.filter(pk__in=ids)))
-        await instance.fetch_related(*self.queryset_prefetch_related)
+        await instance.fetch_related(*m2m_fields)
 
     def has_create_permissions(self):
         return user_with_perms((self.model, 'create'))
@@ -276,6 +313,14 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
 
 
 def get_exclude_dict(fields: set[str]) -> dict[str, set[str]]:
+    """
+    Из {a, b, c.d, c.e, f.g.h, f.g.i} делает
+    {
+        '__root__': {'a', 'b'},
+        'c': {'d', 'e'},
+        'f': {'g.h', 'g.i'}
+    }
+    """
     exclude_dict = defaultdict(set)
     for field in fields:
         if '.' not in field:
@@ -286,9 +331,12 @@ def get_exclude_dict(fields: set[str]) -> dict[str, set[str]]:
     return exclude_dict
 
 
-def exclude_fk(model: Type[BaseModel], data: CamelModel) -> set[str]:
+def exclude_fk_and_o2o(model: Type[BaseModel], data: CamelModel) -> tuple[set[str], set[str]]:
     opts = model._meta
-    return exclude_fields_from_data(data, *opts.fk_fields, *opts.o2o_fields)
+    return (
+        exclude_fields_from_data(data, *opts.fk_fields),
+        exclude_fields_from_data(data, *opts.o2o_fields)
+    )
 
 
 def exclude_m2m(model: Type[BaseModel], data: CamelModel) -> set[str]:
@@ -296,8 +344,8 @@ def exclude_m2m(model: Type[BaseModel], data: CamelModel) -> set[str]:
 
 
 def exclude_fields_from_data(data: CamelModel, *fields: str) -> set[str]:
-    m2m_fields: set[str] = set()
+    return_fields: set[str] = set()
     for field_name in fields:
         if getattr(data, field_name, None) is not None:
-            m2m_fields.add(field_name)
-    return m2m_fields
+            return_fields.add(field_name)
+    return return_fields

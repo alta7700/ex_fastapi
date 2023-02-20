@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from enum import Enum
 from typing import Callable, Any, Generic, TypeVar, Optional, Literal, Type
 
-from fastapi import Response, Request, APIRouter, Body, Path, Query, params, Depends
+from fastapi import Response, Request, APIRouter, Body, Path, Query, params, Depends, BackgroundTasks
 from fastapi.exceptions import RequestValidationError
 from pydantic.error_wrappers import ErrorWrapper
 
@@ -17,59 +17,68 @@ from .utils import pagination_factory, PAGINATION
 
 DISPLAY_FIELDS = tuple[str, ...]
 SERVICE = TypeVar('SERVICE', bound=BaseCRUDService)
-
+DEPENDENCIES = Optional[Sequence[params.Depends]]
+ROUTES_KWARGS = dict[str, bool | dict[str, Any]]
 
 Codes = get_default_codes()
-
-
-DEFAULT_ROUTE = Literal['get_all', 'get_many', 'get_one', 'create', 'edit', 'delete_all', 'delete_many', 'delete_one']
-TREE_ROUTE = Literal['get_tree_node']
-ROUTE = DEFAULT_ROUTE | TREE_ROUTE
-
-DEPENDENCIES = Optional[Sequence[params.Depends]]
 
 
 class CRUDRouter(Generic[SERVICE], APIRouter):
     service: SERVICE
     max_items_get_many_routes: Optional[int]
     max_items_delete_many_routes: Optional[int]
-    tree_node_query_alias: str
     filters: list[Type[BaseFilter]] | bool
 
     def __init__(
             self,
             service: SERVICE,
             *,
-            max_items_many_route: Optional[int] = None,
-            max_items_get_many_route: Optional[int] = None,
-            max_items_delete_many_route: Optional[int] = None,
+            max_items_get_many: int = 100,
+            max_items_delete_many: int = 100,
             prefix: str = None,
             tags: Optional[list[str | Enum]] = None,
             filters: list[Type[BaseFilter]] | bool = None,
-            auto_routes_only_dependencies: DEPENDENCIES = None,
-            routes_kwargs: dict[ROUTE, bool | dict[str, Any]] = None,
+            common_dependencies: DEPENDENCIES = None,
+            routes_kwargs: ROUTES_KWARGS = None,
             add_tree_routes: bool = False,
-            tree_node_query_alias: str = None,
             read_only: bool = False,
+            routes_only: set[str] = None,
             **kwargs,
     ) -> None:
+        """
+            :param max_items_get_many    отпределяет маскимальное количество записей, которые достаются по id
+            :param max_items_delete_many отпределяет маскимальное количество записей, которые удаляются по id
+            :param prefix                префикс из APIRouter
+            :param tags                  tags из APIRouter
+            :param filters               фильтры для get_all
+            :param common_dependencies   инъекции которые применяются для всех роутов, сгенерированных автоматически,
+                если нужно для всех, не только автоматически сгенерированных, то нужно использовать dependencies
+            :param routes_kwargs         словарь вида {route_name: add_api_route kwargs},
+                значение может быть равно False, если этот роут не нужен ({create: False}).
+            :param add_tree_routes       добавляет методы для деревьев
+            :param read_only:            создаёт только get методы
+            :param routes_only           set из роутов, которые нужно создать
+        """
+
         self.service = service
         prefix = prefix.strip('/') if prefix else self.service.model.__name__.lower() + 's'
         tags = tags or [prefix]
         prefix = '/' + prefix
         super().__init__(prefix=prefix, tags=tags, **kwargs)
 
-        self.max_items_get_many_routes = max_items_get_many_route or max_items_many_route
-        self.max_items_delete_many_routes = max_items_delete_many_route or max_items_many_route
+        self.max_items_get_many_routes = max_items_get_many
+        self.max_items_delete_many_routes = max_items_delete_many
         self.read_only = read_only
 
-        auto_routes_only_dependencies = auto_routes_only_dependencies or []
+        common_dependencies = common_dependencies or []
         routes_kwargs = routes_kwargs or {}
 
-        routes_names = self.default_routes_names()
-        if add_tree_routes:
-            routes_names = *routes_names, *self.tree_route_names()
-            self.tree_node_query_alias = tree_node_query_alias or lower_camel(self.service.node_key)
+        if routes_only:
+            routes_names = routes_only
+        else:
+            routes_names = self.default_routes_names()
+            if add_tree_routes:
+                routes_names = *routes_names, *self.tree_route_names()
 
         if filters is None:
             filters = []
@@ -79,7 +88,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             route_data = routes_kwargs.get(route_name, True)
             if route_data is False:
                 continue
-            self._register_route(route_name, route_data, auto_routes_only_dependencies)
+            self._register_route(route_name, (route_data if isinstance(route_data, dict) else {}), common_dependencies)
 
     def _get_all_route(self) -> Callable[..., Any]:
         get_all = self.service.get_all
@@ -87,6 +96,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         filters = self.filters
 
         async def route(
+                background_tasks: BackgroundTasks,
                 response: Response,
                 pagination: PAGINATION = pagination_factory(),
                 sort: CommaSeparatedOf(str, wrapper=snake_case, in_query=True) = Query(None),
@@ -94,7 +104,9 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         ):
             raise_if_error_in_filters(applied_filters)
             skip, limit = pagination
-            result, total = await get_all(skip, limit, sort, filters=applied_filters)
+            result, total = await get_all(
+                skip, limit, sort, filters=applied_filters, background_tasks=background_tasks
+            )
             response.headers.append('X-Total-Count', str(total))
             return [list_item_schema.from_orm(r) for r in result]
 
@@ -107,9 +119,10 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         read_schema = self.get_read_schema()
 
         async def route(
+                background_tasks: BackgroundTasks,
                 item_ids: CommaSeparatedOf(pk_field_type, max_items=max_items, in_query=True) = Query(..., alias='ids')
         ):
-            results = await get_many(item_ids)
+            results = await get_many(item_ids, background_tasks=background_tasks)
             return [read_schema.from_orm(r) for r in results]
 
         return route
@@ -119,9 +132,12 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         get_one = self.service.get_one
         read_schema = self.get_read_schema()
 
-        async def route(item_id: pk_field_type = Path(...)):
+        async def route(
+                background_tasks: BackgroundTasks,
+                item_id: pk_field_type = Path(...),
+        ):
             try:
-                item = await get_one(item_id)
+                item = await get_one(item_id, background_tasks=background_tasks)
             except ItemNotFound:
                 raise self.not_found_error()
             return read_schema.from_orm(item)
@@ -132,10 +148,15 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         pk_field_type = self.service.pk_field_type
         get_tree_node = self.service.get_tree_node
         get_list_item_schema = self.get_list_item_schema()
-        alias = self.tree_node_query_alias
+        alias = lower_camel(self.service.node_key)
 
-        async def route(node_id: Optional[pk_field_type] = Query(None, alias=alias)):
-            return [get_list_item_schema.from_orm(item) for item in await get_tree_node(node_id)]
+        async def route(
+                background_tasks: BackgroundTasks,
+                node_id: Optional[pk_field_type] = Query(None, alias=alias)
+        ):
+            return [get_list_item_schema.from_orm(item) for item in await get_tree_node(
+                node_id, background_tasks=background_tasks
+            )]
 
         return route
 
@@ -144,9 +165,12 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         read_schema = self.get_read_schema()
         create = self.service.create
 
-        async def route(data: create_schema = Body(...)):
+        async def route(
+                background_tasks: BackgroundTasks,
+                data: create_schema = Body(...)
+        ):
             try:
-                return read_schema.from_orm(await create(data))
+                return read_schema.from_orm(await create(data, background_tasks=background_tasks))
             except NotUnique as e:
                 raise self.not_unique_error(e.fields)
 
@@ -158,9 +182,13 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         edit_schema = self.get_edit_schema()
         edit = self.service.edit
 
-        async def route(item_id: pk_field_type = Path(...), data: edit_schema = Body(...)):
+        async def route(
+                background_tasks: BackgroundTasks,
+                item_id: pk_field_type = Path(...),
+                data: edit_schema = Body(...)
+        ):
             try:
-                item = await edit(item_id, data)
+                item = await edit(item_id, data, background_tasks=background_tasks)
             except ItemNotFound:
                 raise self.not_found_error()
             except NotUnique as e:
@@ -175,9 +203,10 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         delete_many = self.service.delete_many
 
         async def route(
+                background_tasks: BackgroundTasks,
                 item_ids: CommaSeparatedOf(pk_field_type, max_items=max_items, in_query=True) = Query(..., alias='ids')
         ):
-            deleted_items_count = await delete_many(item_ids)
+            deleted_items_count = await delete_many(item_ids, background_tasks=background_tasks)
             return self.ok_response(count=deleted_items_count)
 
         return route
@@ -186,9 +215,12 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         pk_field_type = self.service.pk_field_type
         delete_one = self.service.delete_one
 
-        async def route(item_id: pk_field_type = Path(...)):
+        async def route(
+                background_tasks: BackgroundTasks,
+                item_id: pk_field_type = Path(...)
+        ):
             try:
-                await delete_one(item_id)
+                await delete_one(item_id, background_tasks=background_tasks)
             except ItemNotFound:
                 raise self.not_found_error()
             return self.ok_response(item=item_id)
@@ -205,11 +237,11 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         return self._ok_response_instance().resp
 
     @classmethod
-    def _not_found_error_instance(cls) -> BaseCodes:
+    def not_found_error_instance(cls) -> BaseCodes:
         return Codes.not_found
 
     def not_found_error(self) -> BgHTTPException:
-        return self._not_found_error_instance().err()
+        return self.not_found_error_instance().err()
 
     @classmethod
     def not_unique_error_instance(cls) -> BaseCodes:
@@ -218,51 +250,52 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
     def not_unique_error(self, fields: list[str]) -> BgHTTPException:
         return self.not_unique_error_instance().format_err(', '.join(fields), {'fields': fields})
 
-    def default_routes_names(self) -> tuple[DEFAULT_ROUTE, ...]:
+    def default_routes_names(self) -> tuple[str, ...]:
         if self.read_only:
             return 'get_all', 'get_many', 'get_one'
         return 'get_all', 'get_many', 'get_one', 'create', 'edit', 'delete_many', 'delete_one'
 
     @staticmethod
-    def tree_route_names() -> tuple[TREE_ROUTE, ...]:
+    def tree_route_names() -> tuple[str, ...]:
         return 'get_tree_node',
 
-    def all_route_names(self) -> tuple[ROUTE, ...]:
+    def all_route_names(self) -> tuple[str, ...]:
         return *self.default_routes_names(), *self.tree_route_names()
 
     def _register_route(
             self,
-            route_name: ROUTE,
-            route_kwargs: bool | dict[str, Any],
-            dependencies: Optional[Sequence[params.Depends]],
+            route_name: str,
+            route_kwargs: dict[str, Any],
+            common_dependencies: Optional[Sequence[params.Depends]],
     ) -> None:
         responses = {}
         response_model = None
         status = 200
         openapi_extra = None
+        check_perms = route_kwargs.get('check_perms', True)
         match route_name:
             case 'get_all':
                 path = '/all'
                 method = ["GET"]
                 response_model = list[self.get_list_item_schema()]
-                dependencies = [*dependencies, Depends(self.service.has_get_permissions())]
+                check_perms_dependency = Depends(self.service.has_get_permissions())
                 openapi_extra = {'parameters': [f.query_openapi_desc() for f in self.filters]}
             case 'get_many':
                 path = '/many'
                 method = ["GET"]
                 response_model = list[self.get_read_schema()]
-                dependencies = [*dependencies, Depends(self.service.has_get_permissions())]
+                check_perms_dependency = Depends(self.service.has_get_permissions())
             case 'get_one':
                 path = '/one/{item_id}'
                 method = ["GET"]
                 response_model = self.get_read_schema()
-                responses = Codes.responses(self._not_found_error_instance())
-                dependencies = [*dependencies, Depends(self.service.has_get_permissions())]
+                responses = Codes.responses(self.not_found_error_instance())
+                check_perms_dependency = Depends(self.service.has_get_permissions())
             case 'get_tree_node':
                 path = '/tree'
                 method = ["GET"]
                 response_model = list[self.get_list_item_schema()]
-                dependencies = [*dependencies, Depends(self.service.has_get_permissions())]
+                check_perms_dependency = Depends(self.service.has_get_permissions())
             case 'create':
                 path = ''
                 method = ["POST"]
@@ -271,33 +304,34 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                     (self.not_unique_error_instance(), {'fields': ['поле1', 'поле2']})
                 )
                 status = 201
-                dependencies = [*dependencies, Depends(self.service.has_create_permissions())]
+                check_perms_dependency = Depends(self.service.has_create_permissions())
             case 'edit':
                 path = '/{item_id}'
                 method = ["PATCH"]
                 response_model = self.get_read_schema()
                 responses = Codes.responses(
-                    self._not_found_error_instance(),
+                    self.not_found_error_instance(),
                     (self.not_unique_error_instance(), {'fields': ['поле1', 'поле2']})
                 )
-                dependencies = [*dependencies, Depends(self.service.has_edit_permissions())]
+                check_perms_dependency = Depends(self.service.has_edit_permissions())
             case 'delete_many':
                 path = '/many'
                 method = ["DELETE"]
                 # don`t need response model, responses has one with status 200
                 responses = Codes.responses((self._ok_response_instance(), {'count': 30}), )
-                dependencies = [*dependencies, Depends(self.service.has_delete_permissions())]
+                check_perms_dependency = Depends(self.service.has_delete_permissions())
             case 'delete_one':
                 path = '/{item_id}'
                 method = ["DELETE"]
                 # don`t need response model, responses has one with status 200
                 responses = Codes.responses((self._ok_response_instance(), {'item': 77}), )
-                dependencies = [*dependencies, Depends(self.service.has_delete_permissions())]
+                check_perms_dependency = Depends(self.service.has_delete_permissions())
             case _:
                 raise Exception(f'Unknown name of route: {route_name}.\n'
                                 f'Available are {", ".join(self.default_routes_names())}')
         summary = f"{route_name.title().replace('_', ' ')} {self.service.model.__name__}"
 
+        dependencies = [*common_dependencies, check_perms_dependency] if check_perms else [*common_dependencies]
         route_kwargs = get_route_kwargs(route_kwargs, dependencies, responses)
 
         self.add_api_route(
@@ -325,7 +359,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
 
 
 def get_route_kwargs(
-        route_data: bool | dict[str, Any],
+        route_data: dict[str, Any],
         dependencies: DEPENDENCIES,
         responses: dict[str, Any],
 ) -> dict[str, Any]:
