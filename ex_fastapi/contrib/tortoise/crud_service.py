@@ -1,6 +1,6 @@
 from collections import defaultdict
 from collections.abc import Sequence
-from typing import Type, Any, Optional, TypeVar
+from typing import Type, Any, Optional, TypeVar, TYPE_CHECKING
 
 from tortoise.expressions import Q
 from tortoise.fields import ManyToManyRelation
@@ -9,13 +9,17 @@ from tortoise.transactions import in_transaction
 from fastapi import BackgroundTasks
 
 from ex_fastapi import CamelModel
+from ex_fastapi.global_objects import get_auth_dependencies
 from ex_fastapi.routers.base_crud_service import BaseCRUDService, PK, Handler
 from ex_fastapi.routers.exceptions import ItemNotFound, NotUnique
 from ex_fastapi.routers.filters import BaseFilter
 from . import BaseModel
-from .auth_dependencies import user_with_perms
+
+if TYPE_CHECKING:
+    from .auth_dependencies import user_with_perms as _user_with_perms
 
 
+user_with_perms: "_user_with_perms" = get_auth_dependencies().user_with_perms
 TORTOISE_MODEL = TypeVar('TORTOISE_MODEL', bound=BaseModel)
 
 
@@ -209,7 +213,7 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
         if isinstance(item_id_or_instance, BaseModel):
             instance = item_id_or_instance
         else:
-            instance = await self.get_one(item_id=item_id_or_instance, *args)
+            instance = await self.get_one(item_id=item_id_or_instance, background_tasks=background_tasks, *args)
 
         async with in_transaction():
             not_unique = []
@@ -285,7 +289,7 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             await instance.save(force_update=True)
             return instance
 
-        self.create_handlers[model] = base_handler
+        self.edit_handlers[model] = base_handler
         return base_handler
 
     async def save_m2m(self, instance: TORTOISE_MODEL, data: CamelModel, m2m_fields: set[str], clear=True) -> None:

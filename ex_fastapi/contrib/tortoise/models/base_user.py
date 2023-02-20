@@ -19,7 +19,7 @@ USER_GET_BY_FIELDS = Literal['id', 'email', 'username', 'phone']
 
 class BaseUser(BaseModel):
     id: int
-    uuid: UUID = fields.UUIDField(default=uuid4)
+    uuid: UUID = fields.UUIDField(default=uuid4, unique=True)
     username: Optional[Username] = fields.CharField(max_length=40, unique=True, null=True)
     email: Optional[EmailStr] = fields.CharField(max_length=256, unique=True, null=True)
     phone: Optional[PhoneNumber] = fields.CharField(max_length=25, unique=True, null=True)

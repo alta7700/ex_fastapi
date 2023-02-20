@@ -117,7 +117,7 @@ class DefaultCodes(BaseCodes):
 
 
 class AuthErrors(BaseCodes):
-    invalid_token = 401, "Неверный авторизационный токен"
+    invalid_token = 401, "Неверный токен авторизации"
     expired_token = 401, "Истёк срок авторизации"
     not_authenticated = 401, "Не авторизован"
     permission_denied = 403, "Недостаточно прав"

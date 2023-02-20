@@ -14,10 +14,10 @@ DB_MODEL = TypeVar('DB_MODEL')
 class Handler(Protocol):
     async def __call__(
             self,
-            data: CamelModel,
+            data,
             should_exclude: set[str] = None,
             **kwargs
-    ): ...
+    ) -> DB_MODEL: ...
 
 
 class BaseCRUDService(Generic[PK, DB_MODEL]):
@@ -51,7 +51,7 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
     ) -> None:
         ...
 
-    async def get_queryset(self) -> Any:
+    def get_queryset(self) -> Any:
         raise NotImplementedError()
 
     def get_read_schema(self, generate_if_not_exist: bool = True) -> Type[CamelModel]:

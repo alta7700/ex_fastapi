@@ -93,13 +93,14 @@ class UserRepository(BaseUserRepository[USER_MODEL]):
     def get_permissions(self) -> tuple[tuple[int, str], ...]:
         return tuple((perm.content_type_id, perm.name) for perm in self.user.all_permissions)
 
-    async def has_permissions(self, permissions: tuple[tuple[Type[BaseModel], str], ...]) -> bool:
+    def has_permissions(self, permissions: tuple[tuple[Type[BaseModel], str], ...]) -> bool:
         if not permissions:
             return True
         user_perms = self.get_permissions()
         has = True
         for model, perm_name in permissions:
             content_type_id = ContentType.get_by_name(model.__name__).id
+            print(content_type_id, perm_name)
             if (content_type_id, perm_name) not in user_perms:
                 has = False
                 break

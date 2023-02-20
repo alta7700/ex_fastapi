@@ -28,6 +28,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
     max_items_get_many_routes: Optional[int]
     max_items_delete_many_routes: Optional[int]
     filters: list[Type[BaseFilter]] | bool
+    auto_routes_dependencies: DEPENDENCIES
 
     def __init__(
             self,
@@ -38,26 +39,31 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             prefix: str = None,
             tags: Optional[list[str | Enum]] = None,
             filters: list[Type[BaseFilter]] | bool = None,
-            common_dependencies: DEPENDENCIES = None,
+            auto_routes_dependencies: DEPENDENCIES = None,
             routes_kwargs: ROUTES_KWARGS = None,
             add_tree_routes: bool = False,
             read_only: bool = False,
             routes_only: set[str] = None,
+            complete_auto_routes: bool = True,
             **kwargs,
     ) -> None:
         """
-            :param max_items_get_many    отпределяет маскимальное количество записей, которые достаются по id
-            :param max_items_delete_many отпределяет маскимальное количество записей, которые удаляются по id
-            :param prefix                префикс из APIRouter
-            :param tags                  tags из APIRouter
-            :param filters               фильтры для get_all
-            :param common_dependencies   инъекции которые применяются для всех роутов, сгенерированных автоматически,
-                если нужно для всех, не только автоматически сгенерированных, то нужно использовать dependencies
-            :param routes_kwargs         словарь вида {route_name: add_api_route kwargs},
-                значение может быть равно False, если этот роут не нужен ({create: False}).
-            :param add_tree_routes       добавляет методы для деревьев
-            :param read_only:            создаёт только get методы
-            :param routes_only           set из роутов, которые нужно создать
+            :param max_items_get_many         отпределяет маскимальное количество записей, которые достаются по id
+            :param max_items_delete_many      отпределяет маскимальное количество записей, которые удаляются по id
+            :param prefix                     префикс из APIRouter
+            :param tags                       tags из APIRouter
+            :param filters                    фильтры для get_all
+            :param auto_routes_dependencies   инъекции которые применяются для всех роутов, сгенерированных
+                                              автоматически, если нужно для всех, не только автоматически
+                                              сгенерированных, то нужно использовать dependencies
+            :param routes_kwargs              словарь вида {route_name: add_api_route kwargs},
+                                              значение может быть равно False, если этот роут не нужен ({create: False})
+            :param add_tree_routes            добавляет методы для деревьев
+            :param read_only                  создаёт только get методы
+            :param routes_only                set из роутов, которые нужно создать
+            :param complete_auto_routes       если нужно создать какие-то роуты, без Path параметров, которые просто так
+                                              перекрываются
+            :param kwargs                     всё что передаётся в APIRouter
         """
 
         self.service = service
@@ -70,8 +76,8 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         self.max_items_delete_many_routes = max_items_delete_many
         self.read_only = read_only
 
-        common_dependencies = common_dependencies or []
-        routes_kwargs = routes_kwargs or {}
+        self.auto_routes_dependencies = auto_routes_dependencies or []
+        self.routes_kwargs = routes_kwargs or {}
 
         if routes_only:
             routes_names = routes_only
@@ -79,16 +85,21 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             routes_names = self.default_routes_names()
             if add_tree_routes:
                 routes_names = *routes_names, *self.tree_route_names()
+        self.routes_names = routes_names
 
         if filters is None:
             filters = []
         self.filters = filters
 
-        for route_name in routes_names:
-            route_data = routes_kwargs.get(route_name, True)
+        if complete_auto_routes:
+            self.complete_auto_routes()
+
+    def complete_auto_routes(self) -> None:
+        for route_name in self.routes_names:
+            route_data = self.routes_kwargs.get(route_name, True)
             if route_data is False:
                 continue
-            self._register_route(route_name, (route_data if isinstance(route_data, dict) else {}), common_dependencies)
+            self._register_route(route_name, (route_data if isinstance(route_data, dict) else {}))
 
     def _get_all_route(self) -> Callable[..., Any]:
         get_all = self.service.get_all
@@ -266,7 +277,6 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             self,
             route_name: str,
             route_kwargs: dict[str, Any],
-            common_dependencies: Optional[Sequence[params.Depends]],
     ) -> None:
         responses = {}
         response_model = None
@@ -331,7 +341,10 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                                 f'Available are {", ".join(self.default_routes_names())}')
         summary = f"{route_name.title().replace('_', ' ')} {self.service.model.__name__}"
 
-        dependencies = [*common_dependencies, check_perms_dependency] if check_perms else [*common_dependencies]
+        if check_perms:
+            dependencies = [*self.auto_routes_dependencies, check_perms_dependency]
+        else:
+            dependencies = [*self.auto_routes_dependencies]
         route_kwargs = get_route_kwargs(route_kwargs, dependencies, responses)
 
         self.add_api_route(

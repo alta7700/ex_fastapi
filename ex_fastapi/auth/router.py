@@ -8,9 +8,9 @@ from ex_fastapi.global_objects import \
     get_user_repository, get_crud_service,\
     get_auth_provider, get_auth_dependencies
 from ex_fastapi.pydantic import get_schema
-from ex_fastapi.schemas import UserMeRead, UserRead, UserEdit, UserCreate, UserRegistration
+from ex_fastapi.schemas import UserRead, UserMeRead, UserEdit, UserMeEdit, UserCreate, UserRegistration
 from ex_fastapi.routers import CRUDRouter
-from ex_fastapi.routers.exceptions import NotUnique
+from ex_fastapi.routers.exceptions import NotUnique, ItemNotFound
 
 if TYPE_CHECKING:
     from ex_fastapi.auth.provider import AuthProvider
@@ -51,26 +51,34 @@ def create_auth_router(
         auth_provider.delete_auth_cookie(response)
         return Codes.OK.resp
 
-    @router.get('/check', tags=auth_tags, response_model=UserMeRead,
-                responses=AuthErrors.responses(*AuthErrors.all_errors()))
+    @router.get('/check', tags=auth_tags, response_model=UserMeRead, responses=AuthErrors.responses(
+        *AuthErrors.all_errors()
+    ))
     async def get_me(
             response: Response,
             user_repo: UserRepository = Depends(dependencies.user_with_perms())
     ):
         if not await user_repo.can_login():
             raise AuthErrors.not_authenticated.err()
+        # TODO: заменить на что-то поуниверсальнее, а не только куки
         auth_provider.set_auth_cookie(response, user_repo.user)
         return UserMeRead.from_orm(user_repo.user)
 
     if include_users:
         if include_users is True:
             include_users = {}
-        router.include_router(create_users_router(routes_kwargs=include_users))
+        router.include_router(create_users_router(auth_provider=auth_provider, routes_kwargs=include_users))
 
     return router
 
 
-def create_users_router(**kwargs) -> CRUDRouter:
+def create_users_router(
+        auth_provider: "AuthProvider" = None,
+        **kwargs
+) -> CRUDRouter:
+
+    auth_provider = auth_provider or get_auth_provider()
+
     service = get_crud_service()(
         UserRepository.model,
         read_schema=get_schema(UserRead),
@@ -80,7 +88,7 @@ def create_users_router(**kwargs) -> CRUDRouter:
         queryset_prefetch_related=('permissions', 'groups__permissions'),
     )
 
-    router = CRUDRouter(service=service, **kwargs)
+    router = CRUDRouter(service=service, complete_auto_routes=False, **kwargs)
 
     @router.post('/registration', status_code=201, responses=Codes.responses(
         (Codes.activation_email, {'uuid': uuid4()}),
@@ -106,10 +114,14 @@ def create_users_router(**kwargs) -> CRUDRouter:
     ))
     async def activate_account(
             background_tasks: BackgroundTasks,
+            response: Response,
             uuid: UUID = Query(...),
             code: str = Query(min_length=6, max_length=6)
     ):
-        user = await UserRepository.get_user_by('uuid', uuid).select_related('temp_code')
+        # TODO: избавиться от select_related и prefetch_related, сделать какой-то может опять глобальный объект или
+        #  типа того
+        user = await UserRepository.get_user_by('uuid', uuid)\
+            .select_related('temp_code').prefetch_related('permissions', 'groups__permissions')
         if not user:
             raise router.not_found_error()
         user_repo = UserRepository(user)
@@ -123,5 +135,27 @@ def create_users_router(**kwargs) -> CRUDRouter:
             if temp_code_error == 'incorrect':
                 raise Codes.activation_email_code_incorrect.err()
         await user_repo.activate()
+        # TODO: заменить на что-то поуниверсальнее, а не только куки
+        auth_provider.set_auth_cookie(response, user_repo.user)
         return UserMeRead.from_orm(user_repo.user)
+
+    @router.patch('/me', response_model=UserMeRead, responses=AuthErrors.responses(
+        *AuthErrors.all_errors(),
+        router.not_found_error_instance(),
+        (router.not_unique_error_instance(), {'fields': ['поле1', 'поле2']})
+    ))
+    async def edit_me(
+            background_tasks: BackgroundTasks,
+            user_repo: UserRepository = Depends(dependencies.user_with_perms()),
+            data: get_schema(UserMeEdit) = Body(...),
+    ):
+        try:
+            item = await router.service.edit(user_repo.user, data, background_tasks=background_tasks)
+        except ItemNotFound:
+            raise router.not_found_error()
+        except NotUnique as e:
+            raise router.not_unique_error(e.fields)
+        return UserMeRead.from_orm(item)
+
+    router.complete_auto_routes()
     return router
