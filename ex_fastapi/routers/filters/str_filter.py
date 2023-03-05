@@ -1,7 +1,7 @@
 from typing import TypedDict, Self, Any
 
 from . import BaseFilter, BaseFilterValidator
-from pydantic.schema import model_type_schema
+
 
 class StrFilterOpts(TypedDict, total=False):
     min_length: int

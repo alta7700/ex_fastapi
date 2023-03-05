@@ -1,10 +1,10 @@
-from collections.abc import Sequence
-from typing import Type, Any, TypeVar, Generic, Optional, Protocol
+from typing import Type, Any, TypeVar, Generic, Optional, Protocol, Callable, Sequence
 from uuid import UUID
 
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, Request
 
 from ex_fastapi.pydantic import CamelModel
+from ex_fastapi.auth.dependencies import user_with_perms
 from .filters import BaseFilter
 
 PK = TypeVar('PK', int, UUID)
@@ -16,12 +16,16 @@ class Handler(Protocol):
             self,
             data,
             should_exclude: set[str] = None,
-            **kwargs
+            defaults: dict[str, Any] = None,
     ) -> DB_MODEL: ...
 
 
+class QsRelatedFunc(Protocol):
+    def __call__(self, path: str, method: str) -> set[str]: ...
+
+
 class BaseCRUDService(Generic[PK, DB_MODEL]):
-    model: DB_MODEL
+    model: Type[DB_MODEL]
 
     read_schema: Type[CamelModel]
     list_item_schema: Type[CamelModel]
@@ -30,6 +34,10 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
 
     pk_field_type: Type[PK]
     node_key: str
+
+    queryset_select_related: QsRelatedFunc
+    queryset_prefetch_related: QsRelatedFunc
+    queryset_default_filters: dict[str, Any]
 
     create_handlers: dict[Type[DB_MODEL], Handler]
     edit_handlers: dict[Type[DB_MODEL], Handler]
@@ -42,8 +50,8 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
             read_list_item_schema: Type[CamelModel] = None,
             create_schema: Type[CamelModel] = None,
             edit_schema: Type[CamelModel] = None,
-            queryset_select_related: Sequence[str] = None,
-            queryset_prefetch_related: Sequence[str] = None,
+            queryset_select_related: QsRelatedFunc | set[str] = None,
+            queryset_prefetch_related: QsRelatedFunc | set[str] = None,
             queryset_default_filters: dict[str, Any] = None,
             node_key: str = 'parent_id',
             create_handlers: dict[Type[DB_MODEL], Handler] = None,
@@ -51,19 +59,34 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
     ) -> None:
         ...
 
-    def get_queryset(self) -> Any:
+    # Смотри в tortoise-orm сервисе, используется lru_cache
+    def _get_queryset(
+            self,
+            path: str,
+            method: str,
+            select_related: str,
+            prefetch_related: str,
+    ) -> Any:
         raise NotImplementedError()
 
-    def get_read_schema(self, generate_if_not_exist: bool = True) -> Type[CamelModel]:
+    def get_queryset(
+            self,
+            request: Request,
+            select_related: Sequence[str],
+            prefetch_related: Sequence[str],
+    ):
+        raise NotImplementedError()
+
+    def get_read_schema(self) -> Type[CamelModel]:
         return self.read_schema
 
-    def get_list_item_schema(self, generate_if_not_exist: bool = True) -> Type[CamelModel]:
-        return self.list_item_schema or self.get_read_schema(generate_if_not_exist=generate_if_not_exist)
+    def get_list_item_schema(self) -> Type[CamelModel]:
+        return self.list_item_schema or self.get_read_schema()
 
-    def get_create_schema(self, generate_if_not_exist: bool = True) -> Optional[Type[CamelModel]]:
+    def get_create_schema(self) -> Optional[Type[CamelModel]]:
         return self.create_schema
 
-    def get_edit_schema(self, generate_if_not_exist: bool = True) -> Optional[Type[CamelModel]]:
+    def get_edit_schema(self) -> Optional[Type[CamelModel]]:
         return self.edit_schema
 
     async def get_all(
@@ -71,39 +94,110 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
             skip: Optional[int], limit: Optional[int],
             sort: list[str],
             filters: list[BaseFilter],
-            background_tasks: BackgroundTasks,
+            *,
+            background_tasks: BackgroundTasks = None,
+            request: Request = None,
+            select_related: Sequence[str] = (),
+            prefetch_related: Sequence[str] = (),
     ) -> tuple[list[DB_MODEL], int]:
         raise NotImplementedError()
 
-    async def get_many(self, item_ids: list[PK], background_tasks: BackgroundTasks, **kwargs) -> list[DB_MODEL]:
+    async def get_many(
+            self,
+            item_ids: list[PK],
+            *,
+            background_tasks: BackgroundTasks = None,
+            request: Request = None,
+            select_related: Sequence[str] = (),
+            prefetch_related: Sequence[str] = (),
+    ) -> list[DB_MODEL]:
         raise NotImplementedError()
 
-    async def get_one(self, item_id: PK, background_tasks: BackgroundTasks, **kwargs) -> DB_MODEL:
+    async def get_one(
+            self,
+            item_id: PK,
+            *,
+            field_name: str = 'pk',
+            background_tasks: BackgroundTasks = None,
+            request: Request = None,
+            select_related: Sequence[str] = (),
+            prefetch_related: Sequence[str] = (),
+    ) -> DB_MODEL:
         raise NotImplementedError()
 
-    async def get_tree_node(self, node_id: Optional[PK], background_tasks: BackgroundTasks, **kwargs) -> list[DB_MODEL]:
+    async def get_tree_node(
+            self,
+            node_id: Optional[PK],
+            *,
+            background_tasks: BackgroundTasks = None,
+            request: Request = None,
+            select_related: Sequence[str] = (),
+            prefetch_related: Sequence[str] = (),
+    ) -> list[DB_MODEL]:
         raise NotImplementedError()
 
-    async def create(self, data: CamelModel, background_tasks: BackgroundTasks, **kwargs) -> DB_MODEL:
+    async def create(
+            self,
+            data: CamelModel,
+            *,
+            exclude: set[str] = None,
+            model: Type[DB_MODEL] = None,
+            background_tasks: BackgroundTasks = None,
+            defaults: dict[str, Any] = None,
+            request: Request = None,
+    ) -> DB_MODEL:
         raise NotImplementedError()
 
-    async def edit(self, item_id: PK, data: CamelModel, background_tasks: BackgroundTasks, **kwargs) -> DB_MODEL:
+    async def edit(
+            self,
+            item_id_or_instance: PK | DB_MODEL,
+            data: CamelModel,
+            *,
+            exclude: set[str] = None,
+            background_tasks: BackgroundTasks = None,
+            defaults: dict[str, Any] = None,
+            request: Request = None,
+            select_related: Sequence[str] = (),
+            prefetch_related: Sequence[str] = (),
+    ) -> DB_MODEL:
         raise NotImplementedError()
 
-    async def delete_many(self, item_ids: list[PK], background_tasks: BackgroundTasks, **kwargs) -> int:
+    async def delete_many(
+            self,
+            item_ids: list[PK],
+            *,
+            background_tasks: BackgroundTasks = None,
+            request: Request = None,
+            select_related: Sequence[str] = (),
+            prefetch_related: Sequence[str] = (),
+    ) -> int:
         raise NotImplementedError()
 
-    async def delete_one(self, item_id: PK, background_tasks: BackgroundTasks, **kwargs) -> None:
+    async def delete_one(
+            self,
+            item_id: PK,
+            *,
+            background_tasks: BackgroundTasks = None,
+            request: Request = None,
+            select_related: Sequence[str] = (),
+            prefetch_related: Sequence[str] = (),
+    ) -> None:
         raise NotImplementedError()
 
-    def has_create_permissions(self):
+    async def save_m2m(self, instance: DB_MODEL, data: CamelModel, m2m_fields: set[str], clear=True) -> None:
         raise NotImplementedError()
 
-    def has_get_permissions(self):
-        raise NotImplementedError()
+    def has_permissions(self, name: str) -> Callable[[...], bool]:
+        return user_with_perms((self.model, name))
 
-    def has_edit_permissions(self):
-        raise NotImplementedError()
+    def has_create_permissions(self) -> Callable[[...], bool]:
+        return self.has_permissions('create')
 
-    def has_delete_permissions(self):
-        raise NotImplementedError()
+    def has_get_permissions(self) -> Callable[[...], bool]:
+        return self.has_permissions('get')
+
+    def has_edit_permissions(self) -> Callable[[...], bool]:
+        return self.has_permissions('edit')
+
+    def has_delete_permissions(self) -> Callable[[...], bool]:
+        return self.has_permissions('delete')

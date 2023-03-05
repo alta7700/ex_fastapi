@@ -2,10 +2,9 @@ from __future__ import annotations
 from enum import Enum
 from itertools import groupby
 from types import DynamicClassAttribute
-from typing import Any, Type
+from typing import Any
 
 from fastapi import BackgroundTasks
-from starlette import status
 
 from .pydantic import CamelModel, lower_camel
 from .default_response import BgHTTPException
@@ -107,7 +106,7 @@ class BaseCodes(Enum):
 class DefaultCodes(BaseCodes):
     OK = 200, 'ОК'
     not_found = 404, 'Не нашёл подходящий элемент :('
-    not_unique_err = 400, 'Поле должно быть уникальным ({})'
+    fields_error = 400, 'Fix all fields errors'
 
     activation_email = 201, 'We sent activation code to your email.\nCheck spam if you can`t find it.'
     activation_email_resend = 400, 'Your activation code is expired, we sent new one to your email.\n' \

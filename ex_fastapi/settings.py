@@ -5,7 +5,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseSettings as PydanticBaseSettings, DirectoryPath
+from pydantic import BaseSettings as PydanticBaseSettings, DirectoryPath, AnyHttpUrl
+
 
 MODE = os.environ.get('MODE') or 'DEBUG'
 DEBUG = MODE == 'DEBUG'
@@ -14,7 +15,6 @@ PROD = MODE == 'PROD'
 
 
 class Databases(Enum):
-    default = 'tortoise'
     tortoise = 'tortoise'
 
 
@@ -42,6 +42,7 @@ class BaseSettings(PydanticBaseSettings):
     RSA_PUBLIC: str
     ACCESS_TOKEN_LIFETIME: int = 5
     REFRESH_TOKEN_LIFETIME: int = 10
+    SITE: AnyHttpUrl = 'http://localhost:8000'
 
     Config = SettingsConfig
 
@@ -53,12 +54,16 @@ class BaseSettings(PydanticBaseSettings):
     def refresh_token_lifetime(self) -> int:
         return int(timedelta(days=self.REFRESH_TOKEN_LIFETIME).total_seconds())
 
+    @property
+    def cookie_secure(self) -> bool:
+        return self.SITE.scheme == 'https'
+
 
 def get_settings(var: str, default: Any = '__undefined__') -> Any:
     settings = import_module('settings')
     match var:
         case 'db_name':
-            return getattr(settings, 'DB_PROVIDER', Databases.default).value
+            return getattr(settings, 'DB_PROVIDER', Databases.tortoise).value
         case _:
             if default == '__undefined__':
                 return getattr(settings, var)

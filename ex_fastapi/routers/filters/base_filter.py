@@ -85,7 +85,7 @@ class BaseFilterValidator(Generic[OPTS]):
         field_schema.update(**cls.__schema__())
 
     @classmethod
-    def __schema__(self) -> dict[str, Any]:
+    def __schema__(cls) -> dict[str, Any]:
         return {"type": 'string', 'example': 'AnyString'}
 
     @classmethod

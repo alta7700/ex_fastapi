@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 from enum import Enum
-from typing import Callable, Any, Generic, TypeVar, Optional, Literal, Type
+from typing import Callable, Any, Generic, TypeVar, Optional, Type
 
 from fastapi import Response, Request, APIRouter, Body, Path, Query, params, Depends, BackgroundTasks
 from fastapi.exceptions import RequestValidationError
@@ -10,7 +10,7 @@ from ex_fastapi import BaseCodes, snake_case, CommaSeparatedOf, lower_camel
 from ex_fastapi.global_objects import get_default_codes
 from ex_fastapi.default_response import BgHTTPException
 from . import BaseCRUDService
-from .exceptions import NotUnique, ItemNotFound
+from .exceptions import ItemNotFound, FieldErrors, MultipleFieldsError
 from .filters import BaseFilter
 from .utils import pagination_factory, PAGINATION
 
@@ -108,6 +108,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
 
         async def route(
                 background_tasks: BackgroundTasks,
+                request: Request,
                 response: Response,
                 pagination: PAGINATION = pagination_factory(),
                 sort: CommaSeparatedOf(str, wrapper=snake_case, in_query=True) = Query(None),
@@ -116,7 +117,9 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             raise_if_error_in_filters(applied_filters)
             skip, limit = pagination
             result, total = await get_all(
-                skip, limit, sort, filters=applied_filters, background_tasks=background_tasks
+                skip, limit, sort, applied_filters,
+                background_tasks=background_tasks,
+                request=request,
             )
             response.headers.append('X-Total-Count', str(total))
             return [list_item_schema.from_orm(r) for r in result]
@@ -130,10 +133,15 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         read_schema = self.get_read_schema()
 
         async def route(
+                request: Request,
                 background_tasks: BackgroundTasks,
                 item_ids: CommaSeparatedOf(pk_field_type, max_items=max_items, in_query=True) = Query(..., alias='ids')
         ):
-            results = await get_many(item_ids, background_tasks=background_tasks)
+            results = await get_many(
+                item_ids,
+                background_tasks=background_tasks,
+                request=request,
+            )
             return [read_schema.from_orm(r) for r in results]
 
         return route
@@ -144,11 +152,16 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         read_schema = self.get_read_schema()
 
         async def route(
+                request: Request,
                 background_tasks: BackgroundTasks,
                 item_id: pk_field_type = Path(...),
         ):
             try:
-                item = await get_one(item_id, background_tasks=background_tasks)
+                item = await get_one(
+                    item_id,
+                    background_tasks=background_tasks,
+                    request=request,
+                )
             except ItemNotFound:
                 raise self.not_found_error()
             return read_schema.from_orm(item)
@@ -162,11 +175,14 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         alias = lower_camel(self.service.node_key)
 
         async def route(
+                request: Request,
                 background_tasks: BackgroundTasks,
                 node_id: Optional[pk_field_type] = Query(None, alias=alias)
         ):
             return [get_list_item_schema.from_orm(item) for item in await get_tree_node(
-                node_id, background_tasks=background_tasks
+                node_id,
+                background_tasks=background_tasks,
+                request=request,
             )]
 
         return route
@@ -177,13 +193,18 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         create = self.service.create
 
         async def route(
+                request: Request,
                 background_tasks: BackgroundTasks,
                 data: create_schema = Body(...)
         ):
             try:
-                return read_schema.from_orm(await create(data, background_tasks=background_tasks))
-            except NotUnique as e:
-                raise self.not_unique_error(e.fields)
+                return read_schema.from_orm(await create(
+                    data,
+                    background_tasks=background_tasks,
+                    request=request,
+                ))
+            except MultipleFieldsError as e:
+                raise self.field_errors(e)
 
         return route
 
@@ -194,16 +215,22 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         edit = self.service.edit
 
         async def route(
+                request: Request,
                 background_tasks: BackgroundTasks,
                 item_id: pk_field_type = Path(...),
                 data: edit_schema = Body(...)
         ):
             try:
-                item = await edit(item_id, data, background_tasks=background_tasks)
+                item = await edit(
+                    item_id,
+                    data,
+                    background_tasks=background_tasks,
+                    request=request,
+                )
             except ItemNotFound:
                 raise self.not_found_error()
-            except NotUnique as e:
-                raise self.not_unique_error(e.fields)
+            except MultipleFieldsError as e:
+                raise self.field_errors(e)
             return read_schema.from_orm(item)
 
         return route
@@ -214,10 +241,15 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         delete_many = self.service.delete_many
 
         async def route(
+                request: Request,
                 background_tasks: BackgroundTasks,
                 item_ids: CommaSeparatedOf(pk_field_type, max_items=max_items, in_query=True) = Query(..., alias='ids')
         ):
-            deleted_items_count = await delete_many(item_ids, background_tasks=background_tasks)
+            deleted_items_count = await delete_many(
+                item_ids,
+                background_tasks=background_tasks,
+                request=request,
+            )
             return self.ok_response(count=deleted_items_count)
 
         return route
@@ -227,11 +259,16 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         delete_one = self.service.delete_one
 
         async def route(
+                request: Request,
                 background_tasks: BackgroundTasks,
                 item_id: pk_field_type = Path(...)
         ):
             try:
-                await delete_one(item_id, background_tasks=background_tasks)
+                await delete_one(
+                    item_id,
+                    background_tasks=background_tasks,
+                    request=request,
+                )
             except ItemNotFound:
                 raise self.not_found_error()
             return self.ok_response(item=item_id)
@@ -255,11 +292,16 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         return self.not_found_error_instance().err()
 
     @classmethod
-    def not_unique_error_instance(cls) -> BaseCodes:
-        return Codes.not_unique_err
+    def field_errors_instance(cls) -> BaseCodes:
+        return Codes.fields_error
 
-    def not_unique_error(self, fields: list[str]) -> BgHTTPException:
-        return self.not_unique_error_instance().format_err(', '.join(fields), {'fields': fields})
+    def field_errors_response_example(self) -> tuple[BaseCodes, dict[str, str]]:
+        return (self.field_errors_instance(), {
+            'errors': 'Объект, который соответствует заполняемой модели, но вместо значений ошибки'
+        })
+
+    def field_errors(self, multiple_errors: MultipleFieldsError) -> BgHTTPException:
+        return self.field_errors_instance().err({'errors': FieldErrors(errors=multiple_errors.errors).errors})
 
     def default_routes_names(self) -> tuple[str, ...]:
         if self.read_only:
@@ -307,12 +349,10 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 response_model = list[self.get_list_item_schema()]
                 check_perms_dependency = Depends(self.service.has_get_permissions())
             case 'create':
-                path = ''
+                path = '/create'
                 method = ["POST"]
                 response_model = self.get_read_schema()
-                responses = Codes.responses(
-                    (self.not_unique_error_instance(), {'fields': ['поле1', 'поле2']})
-                )
+                responses = Codes.responses(self.field_errors_response_example())
                 status = 201
                 check_perms_dependency = Depends(self.service.has_create_permissions())
             case 'edit':
@@ -321,7 +361,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 response_model = self.get_read_schema()
                 responses = Codes.responses(
                     self.not_found_error_instance(),
-                    (self.not_unique_error_instance(), {'fields': ['поле1', 'поле2']})
+                    self.field_errors_response_example()
                 )
                 check_perms_dependency = Depends(self.service.has_edit_permissions())
             case 'delete_many':
@@ -358,17 +398,17 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             **route_kwargs,
         )
 
-    def get_read_schema(self, generate_if_not_exist: bool = True):
-        return self.service.get_read_schema(generate_if_not_exist=generate_if_not_exist)
+    def get_read_schema(self):
+        return self.service.get_read_schema()
 
-    def get_list_item_schema(self, generate_if_not_exist: bool = True):
-        return self.service.get_list_item_schema(generate_if_not_exist=generate_if_not_exist)
+    def get_list_item_schema(self):
+        return self.service.get_list_item_schema()
 
-    def get_create_schema(self, generate_if_not_exist: bool = True):
-        return self.service.get_create_schema(generate_if_not_exist=generate_if_not_exist)
+    def get_create_schema(self):
+        return self.service.get_create_schema()
 
-    def get_edit_schema(self, generate_if_not_exist: bool = True):
-        return self.service.get_edit_schema(generate_if_not_exist=generate_if_not_exist)
+    def get_edit_schema(self):
+        return self.service.get_edit_schema()
 
 
 def get_route_kwargs(

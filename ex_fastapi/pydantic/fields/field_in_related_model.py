@@ -34,8 +34,11 @@ _T = TypeVar('_T')
 
 
 def FieldInRelatedModel(
-        related_class: Any, field_name: str, value_type: Type[_T], modify_schema: dict[str, Any] = None
-) -> Type[_T]:
+        related_class: Any,
+        field_name: str,
+        value_type: _T,
+        modify_schema: dict[str, Any] = None,
+) -> _T:
 
     class BaseWrapped(_FieldInRelatedModelInstance):
         _related = related_class

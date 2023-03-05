@@ -51,3 +51,10 @@ class PermissionMixin(BaseModel):
     @property
     def all_permissions(self) -> set[Permission]:
         return {*self.permissions, *(p for g in self.groups for p in g.permissions)}
+
+    @classmethod
+    def get_queryset_prefetch_related(cls, path: str, method: str) -> set[str]:
+        pr = super().get_queryset_prefetch_related(path, method)
+        pr.add('permissions')
+        pr.add('groups__permissions')
+        return pr

@@ -12,6 +12,8 @@ def snake_case(string: str) -> str:
             res += '_' + c.lower()
         else:
             res += c
+    if res.startswith('_'):
+        res = res[1:]
     return res
 
 

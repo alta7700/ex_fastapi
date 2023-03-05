@@ -4,14 +4,11 @@ from typing import Any
 from fastapi import Cookie, Header
 from jwt import InvalidSignatureError, ExpiredSignatureError, DecodeError
 
-from ex_fastapi.schemas import Token
-from ex_fastapi.pydantic import get_schema
 from ex_fastapi.global_objects import get_auth_errors
-from .config import BaseJWTConfig, TokenTypes
+from .config import BaseJWTConfig, TokenTypes, AuthStrategy, default_auth_strategy, Token, auth_strategy_is_valid
 
 
 AuthErrors = get_auth_errors()
-Token = get_schema(Token)
 
 
 class JWTConsumer(BaseJWTConfig):
@@ -27,9 +24,15 @@ class JWTConsumer(BaseJWTConfig):
 class AuthConsumer:
 
     jwt: JWTConsumer
+    auth_method: str
+    auth_schema: str
 
-    def __init__(self, public_key: str):
+    def __init__(self, public_key: str, strategy: AuthStrategy):
         self.jwt = JWTConsumer(public_key)
+        strategy: AuthStrategy = {**default_auth_strategy, **strategy}
+        assert auth_strategy_is_valid(strategy)
+        self.auth_method = strategy['method']
+        self.auth_schema = strategy['schema']
 
     def get_token_payload(self, token: str):
         try:
@@ -40,38 +43,28 @@ class AuthConsumer:
             raise AuthErrors.expired_token.err()
         return Token(**payload)
 
-    def parse_token(self, token: str) -> Token:
+    def parse_token(self, token: str, token_type: TokenTypes) -> "Token":
         payload = self.get_token_payload(token)
-        if payload.type != TokenTypes.access:
+        if payload.type != token_type:
             raise AuthErrors.not_authenticated.err()
         return payload
 
-    def get_auth(self, schema_required: str, token: str) -> Token:
-        schema, _, token = token.partition(" ")
-        if schema.lower() != schema_required:
-            raise AuthErrors.not_authenticated.err()
-        return self.parse_token(token)
-
-    def get_user_auth(
-            self,
-            cookie: bool = False,
-            header: bool = False,
-            schema: str = 'bearer'
-    ) -> Callable[[Any], Token]:
-        assert cookie or header
-        _cookie, _header = Cookie(default=None, alias='Token'), Header(default=None, alias='Token')
-        if cookie and header:
-            def wrapper(cookie_token: str = _cookie, header_token: str = _header) -> Token:
-                return self._get_user_auth(cookie_token or header_token, schema=schema)
-        elif cookie:
-            def wrapper(cookie_token: str = _cookie) -> Token:
-                return self._get_user_auth(cookie_token, schema=schema)
-        else:
-            def wrapper(header_token: str = _header) -> Token:
-                return self._get_user_auth(header_token, schema=schema)
-        return wrapper
-
-    def _get_user_auth(self, token: str, schema: str = 'bearer'):
+    def get_auth(self, token: str, token_type: TokenTypes) -> "Token":
         if token is None:
             raise AuthErrors.not_authenticated.err()
-        return self.get_auth(schema, token)
+        schema, _, token = token.partition(" ")
+        if schema.lower() != self.auth_schema:
+            raise AuthErrors.not_authenticated.err()
+        return self.parse_token(token, token_type=token_type)
+
+    def get_user_auth(self) -> Callable[[Any], "Token"]:
+        if self.auth_method == 'cookie':
+            def wrapper(cookie_token: str = Cookie(default=None, alias='Token')) -> "Token":
+                return self.get_auth(cookie_token, TokenTypes.access)
+        else:
+            def wrapper(header_token: str = Header(default=None, alias='Token')) -> "Token":
+                return self.get_auth(header_token, TokenTypes.access)
+        return wrapper
+
+    def get_refresh_token(self, token: str) -> "Token":
+        return self.get_auth(token, TokenTypes.access)

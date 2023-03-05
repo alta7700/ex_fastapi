@@ -7,14 +7,12 @@ from ex_fastapi.pydantic import CamelModel, CamelModelORM, Password, Username, P
 from ex_fastapi.models import max_len_of, default_of
 from ex_fastapi.global_objects import get_user_model
 from ex_fastapi.schemas import PermissionIDS, PermissionGroupRead, PermissionRead
-from .config import TokenTypes
 
 
 __all__ = [
     "PasswordsPair", "BaseAuthSchema", "AuthSchema", "UserBase",
-    "UserO2ORead", "UserO2OEdit", "UserO2OCreate",
     "UserRead", "UserMeRead", "UserEdit", "UserMeEdit", "UserCreate", "UserRegistration",
-    "TokenUser", "Token", "TokenIssue", "TokenPair",
+    "TokenUser",
 ]
 User = get_user_model()
 
@@ -74,35 +72,24 @@ class AuthSchema(UserBase, BaseAuthSchema):
         auth_fields = User.AUTH_FIELDS
 
 
-class UserO2ORead(UserBase):
-    username: Optional[str]
+class UserReadBase(UserBase):
     id: int
+    username: Optional[str]
+    is_active: bool
     created_at: datetime
 
     class Config(UserBase.Config):
         orm_mode = True
 
 
-class UserO2OEdit(UserBase):
-    pass
-
-
-class UserO2OCreate(PasswordsPair, UserBase):
-    password: Optional[Password]
-    re_password: Optional[str]
-
-
-class UserRead(UserO2ORead):
+class UserRead(UserReadBase):
     permissions: PermissionIDS
     groups: RelatedList[PermissionGroupRead]
-    is_superuser: bool
-    is_active: bool
 
 
-class UserMeRead(UserO2ORead):
+class UserMeRead(UserReadBase):
     all_permissions: RelatedList[PermissionRead]
     is_superuser: bool
-    is_active: bool
 
 
 class UserEdit(UserBase):
@@ -130,26 +117,3 @@ class UserRegistration(PasswordsPair, UserBase):
 class TokenUser(CamelModelORM):
     id: int
     is_superuser: bool
-
-
-class Token(CamelModel):
-    type: TokenTypes
-    user: TokenUser
-    iat: int  # timestamp
-
-
-class TokenIssue(Token):
-    exp: int  # timestamp
-
-    @root_validator(pre=True)
-    def calc_ext(cls, values: dict[str, Any]) -> dict[str, Any]:
-        if 'exp' not in values:
-            seconds = values['lifetime'][values['type']]
-            values["exp"] = values["iat"] + seconds
-        return values
-
-
-class TokenPair(CamelModel):
-    access_token: str
-    refresh_token: str
-    user: UserMeRead

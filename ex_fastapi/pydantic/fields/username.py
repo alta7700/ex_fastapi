@@ -6,7 +6,7 @@ from pydantic.validators import strict_str_validator
 
 class Username(str):
 
-    pattern = re.compile(r'^(?!user-)(?=.*[a-zA-Z])[\w+.+-]+$')
+    pattern = re.compile(r'^(?=.*[a-zA-Z])[\w+.-]+$')
 
     @classmethod
     def __modify_schema__(cls, field_schema: dict[str, Any]) -> None:

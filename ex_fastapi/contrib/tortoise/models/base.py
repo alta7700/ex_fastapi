@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, Type
+from typing import Any, Type, Sequence
 
 from tortoise import Model as DefaultModel
 
@@ -23,6 +23,14 @@ class BaseModel(DefaultModel):
                 if await query.filter(**{key: current_value}).exists():
                     not_unique.append(key)
         return not_unique
+
+    @classmethod
+    def get_queryset_select_related(cls, path: str, method: str) -> set[str]:
+        return set()
+
+    @classmethod
+    def get_queryset_prefetch_related(cls, path: str, method: str) -> set[str]:
+        return set()
 
 
 def get_field_param(model: Type[BaseModel], field_name: str, field_param: str):

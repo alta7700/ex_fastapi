@@ -1,12 +1,11 @@
 import random
 from string import ascii_uppercase, digits
-from typing import Literal, Optional, Union
+from typing import Literal, Optional, Union, Sequence
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 from tortoise import fields, timezone
 from pydantic import EmailStr
-from tortoise.queryset import QuerySet
 
 from ex_fastapi.global_objects import get_user_model_path
 from ex_fastapi.pydantic import Username, PhoneNumber
@@ -42,6 +41,13 @@ class BaseUser(BaseModel):
 
     def repr(self) -> str:
         return self.username or self.email or self.phone
+
+    @classmethod
+    def get_queryset_select_related(cls, path: str, method: str) -> set[str]:
+        sr = super().get_queryset_select_related(path, method)
+        if path.endswith('/activation'):
+            sr.add('temp_code')
+        return sr
 
 
 class UserWithPermissions(BaseUser, PermissionMixin):

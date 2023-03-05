@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from ex_fastapi import CRUDRouter
 from ex_fastapi.global_objects import get_crud_service
-from ex_fastapi.pydantic import get_schema
+from ex_fastapi.pydantic.utils import get_schema
 from ex_fastapi.models import Permission, PermissionGroup
 from ex_fastapi.schemas import PermissionRead, PermissionGroupRead, PermissionGroupCreate, PermissionGroupEdit
 
