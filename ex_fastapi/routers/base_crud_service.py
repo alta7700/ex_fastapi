@@ -15,13 +15,21 @@ class Handler(Protocol):
     async def __call__(
             self,
             data,
-            should_exclude: set[str] = None,
+            should_exclude: set[str],
             defaults: dict[str, Any] = None,
     ) -> DB_MODEL: ...
 
 
 class QsRelatedFunc(Protocol):
     def __call__(self, path: str, method: str) -> set[str]: ...
+
+
+class QsAnnotateFunc(Protocol):
+    def __call__(self, path: str, method: str) -> dict[str, Any]: ...
+
+
+class QsDefaultFiltersFunc(Protocol):
+    def __call__(self, path: str, method: str) -> dict[str, Any]: ...
 
 
 class BaseCRUDService(Generic[PK, DB_MODEL]):
@@ -33,11 +41,13 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
     edit_schema: Optional[Type[CamelModel]]
 
     pk_field_type: Type[PK]
+    pk_attr: str
     node_key: str
 
     queryset_select_related: QsRelatedFunc
     queryset_prefetch_related: QsRelatedFunc
-    queryset_default_filters: dict[str, Any]
+    queryset_annotate_fields: QsAnnotateFunc
+    queryset_default_filters: QsDefaultFiltersFunc
 
     create_handlers: dict[Type[DB_MODEL], Handler]
     edit_handlers: dict[Type[DB_MODEL], Handler]
@@ -52,7 +62,8 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
             edit_schema: Type[CamelModel] = None,
             queryset_select_related: QsRelatedFunc | set[str] = None,
             queryset_prefetch_related: QsRelatedFunc | set[str] = None,
-            queryset_default_filters: dict[str, Any] = None,
+            queryset_annotate_fields: QsAnnotateFunc | dict[str, Any] = None,
+            queryset_default_filters: QsDefaultFiltersFunc | dict[str, Any] = None,
             node_key: str = 'parent_id',
             create_handlers: dict[Type[DB_MODEL], Handler] = None,
             edit_handlers: dict[Type[DB_MODEL], Handler] = None,
@@ -92,7 +103,7 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
     async def get_all(
             self,
             skip: Optional[int], limit: Optional[int],
-            sort: list[str],
+            sort: set[str],
             filters: list[BaseFilter],
             *,
             background_tasks: BackgroundTasks = None,
@@ -145,6 +156,7 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
             background_tasks: BackgroundTasks = None,
             defaults: dict[str, Any] = None,
             request: Request = None,
+            inside_transaction: bool = False,
     ) -> DB_MODEL:
         raise NotImplementedError()
 
@@ -159,6 +171,7 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
             request: Request = None,
             select_related: Sequence[str] = (),
             prefetch_related: Sequence[str] = (),
+            inside_transaction: bool = False,
     ) -> DB_MODEL:
         raise NotImplementedError()
 
@@ -201,3 +214,6 @@ class BaseCRUDService(Generic[PK, DB_MODEL]):
 
     def has_delete_permissions(self) -> Callable[[...], bool]:
         return self.has_permissions('delete')
+
+    def get_default_sort_fields(self) -> set[str]:
+        raise NotImplementedError

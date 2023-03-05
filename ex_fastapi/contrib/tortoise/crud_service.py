@@ -9,7 +9,8 @@ from tortoise.transactions import in_transaction
 from fastapi import BackgroundTasks, Request
 
 from ex_fastapi import CamelModel
-from ex_fastapi.routers.base_crud_service import BaseCRUDService, PK, Handler, QsRelatedFunc
+from ex_fastapi.routers.base_crud_service import BaseCRUDService, PK, \
+    Handler, QsRelatedFunc, QsAnnotateFunc, QsDefaultFiltersFunc
 from ex_fastapi.routers.exceptions import ItemNotFound, NotUnique, NotFoundFK, MultipleFieldsError
 from ex_fastapi.routers.filters import BaseFilter
 from . import BaseModel
@@ -32,7 +33,8 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             edit_schema: Type[CamelModel] = None,
             queryset_select_related: QsRelatedFunc | set[str] = None,
             queryset_prefetch_related: QsRelatedFunc | set[str] = None,
-            queryset_default_filters: dict[str, Any] = None,
+            queryset_annotate_fields: QsAnnotateFunc | dict[str, Any] = None,
+            queryset_default_filters: QsDefaultFiltersFunc | dict[str, Any] = None,
             node_key: str = 'parent_id',
             create_handlers: dict[Type[TORTOISE_MODEL], Handler] = None,
             edit_handlers: dict[Type[TORTOISE_MODEL], Handler] = None,
@@ -41,35 +43,32 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
         self.model = db_model
         self.opts = self.model._meta
         self.pk_field_type = self.opts.pk.field_type  # type: ignore
-        self._pk = self.opts.pk_attr
+        self.pk_attr = self.opts.pk_attr
 
         self.read_schema = read_schema
         self.list_item_schema = read_list_item_schema or self.read_schema
         self.create_schema = create_schema
         self.edit_schema = edit_schema
 
-        if queryset_select_related is None:
-            self.queryset_select_related = self.model.get_queryset_select_related
-        else:
-            if callable(queryset_select_related):
-                self.queryset_select_related = queryset_select_related
-            else:
-                self.queryset_select_related = lambda path, method: queryset_select_related
-        if queryset_prefetch_related is None:
-            self.queryset_prefetch_related = self.model.get_queryset_prefetch_related
-        else:
-            if callable(queryset_prefetch_related):
-                self.queryset_prefetch_related = queryset_prefetch_related
-            else:
-                self.queryset_prefetch_related = lambda path, method: queryset_prefetch_related
-        self.queryset_default_filters = queryset_default_filters or ()
+        self.queryset_select_related = get_qs_build_func(
+            'queryset_select_related', self.model, queryset_select_related
+        )
+        self.queryset_prefetch_related = get_qs_build_func(
+            'queryset_prefetch_related', self.model, queryset_prefetch_related
+        )
+        self.queryset_annotate_fields = get_qs_build_func(
+            'queryset_annotate_fields', self.model, queryset_annotate_fields
+        )
+        self.queryset_default_filters = get_qs_build_func(
+            'queryset_default_filters', self.model, queryset_default_filters
+        )
 
         self.node_key = node_key
 
         self.create_handlers = create_handlers or {}
         self.edit_handlers = edit_handlers or {}
 
-    @lru_cache
+    @lru_cache(maxsize=1000)
     def _get_queryset(
             self,
             path: str,
@@ -80,12 +79,14 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
         query = self.model.all()
         select_related = select_related.split(',') if select_related else ()
         prefetch_related = prefetch_related.split(',') if select_related else ()
-        if self.queryset_default_filters:
-            query = query.filter(**self.queryset_default_filters)
-        if self.queryset_select_related:
-            query = query.select_related(*{*self.queryset_select_related(path, method), *select_related})
-        if self.queryset_prefetch_related:
-            query = query.prefetch_related(*{*self.queryset_prefetch_related(path, method), *prefetch_related})
+        if default_filters := self.queryset_default_filters(path, method):
+            query = query.filter(**default_filters)
+        if annotate_fields := self.queryset_annotate_fields(path, method):
+            query = query.annotate(**annotate_fields)
+        if final_select_related := {*self.queryset_select_related(path, method), *select_related}:
+            query = query.select_related(*final_select_related)
+        if final_prefetch_related := {*self.queryset_prefetch_related(path, method), *prefetch_related}:
+            query = query.prefetch_related(*final_prefetch_related)
         return query
 
     def get_queryset(
@@ -105,7 +106,7 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
     async def get_all(
             self,
             skip: Optional[int], limit: Optional[int],
-            sort: list[str],
+            sort: set[str],
             filters: list[BaseFilter],
             *,
             background_tasks: BackgroundTasks = None,
@@ -114,17 +115,18 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             prefetch_related: Sequence[str] = (),
     ) -> tuple[list[TORTOISE_MODEL], int]:
         query = self.get_queryset(request, select_related, prefetch_related)
+        for f in filters:
+            query = f.filter(query)
+        base_query = query
         if sort:
             query = query.order_by(*sort)
         if skip:
             query = query.offset(skip)
         if limit:
             query = query.limit(limit)
-        for f in filters:
-            query = f.filter(query)
         async with in_transaction():
             result = await query
-            count = await query.count()
+            count = await base_query.count()
         return result, count
 
     def _get_many_queryset(
@@ -200,20 +202,22 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             background_tasks: BackgroundTasks = None,
             defaults: dict[str, Any] = None,
             request: Request = None,
+            select_related: Sequence[str] = (),
+            prefetch_related: Sequence[str] = (),
+            inside_transaction: bool = False
     ) -> TORTOISE_MODEL:
         model: Type[TORTOISE_MODEL] = model or self.model
-        fk_fields, bfk_fields, o2o_fields, bo2o_fields, m2m_fields = exclude_fk_o2o_bo2o_m2m(model, data)
+        fk_fields, bfk_fields, o2o_fields, bo2o_fields, m2m_fields = exclude_fk_bfk_o2o_bo2o_m2m(model, data)
         exclude_dict = get_exclude_dict(exclude or set())
-        should_exclude = {*exclude_dict['__root__'], *fk_fields, *bfk_fields, *o2o_fields, *bo2o_fields, *m2m_fields}
         errors = MultipleFieldsError()
 
-        async with in_transaction():
-            not_unique = await model.check_unique(data.dict(exclude=should_exclude))
+        async def get_new_instance():
+            not_unique = await model.check_unique(data.dict(include=model._meta.db_fields))
             if not_unique:
                 errors.add_errors(NotUnique(fields=not_unique))
                 raise errors
             instance: TORTOISE_MODEL = await self.handle_create(model)(
-                data, should_exclude=should_exclude, defaults=defaults
+                data, should_exclude=exclude_dict['__root__'], defaults=defaults
             )
             if o2o_fields:
                 try:
@@ -238,8 +242,19 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             if errors:
                 raise errors
             await self.save_m2m(instance, data, m2m_fields=m2m_fields, clear=False)
+            return instance
 
-        return await self.get_one(instance.pk, request=request)
+        if inside_transaction:
+            return await get_new_instance()
+        else:
+            async with in_transaction():
+                new_instance = await get_new_instance()
+                return await self.get_one(
+                    new_instance.pk,
+                    request=request,
+                    select_related=select_related,
+                    prefetch_related=prefetch_related,
+                )
 
     async def create_o2o(
             self,
@@ -256,7 +271,12 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             o2o_model: Type[TORTOISE_MODEL] = instance._meta.fields_map[field_name].related_model
             o2o_exclude = exclude_dict[field_name]
             try:
-                o2o_instance = await self.create(o2o_data, exclude=o2o_exclude, model=o2o_model)
+                o2o_instance = await self.create(
+                    o2o_data,
+                    exclude=o2o_exclude,
+                    model=o2o_model,
+                    inside_transaction=True
+                )
                 setattr(instance, field_name, o2o_instance)
             except MultipleFieldsError as e:
                 errors.add_errors(*e.with_prefix(field_name))
@@ -284,8 +304,11 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             back_o2o_exclude = exclude_dict[field_name]
             try:
                 await self.create(
-                    back_o2o_data, exclude=back_o2o_exclude, model=back_o2o_model,
-                    defaults={back_o2o_source_field: instance}
+                    back_o2o_data,
+                    exclude=back_o2o_exclude,
+                    model=back_o2o_model,
+                    defaults={back_o2o_source_field: instance},
+                    inside_transaction=True
                 )
             except MultipleFieldsError as e:
                 errors.add_errors(*e.with_prefix(field_name))
@@ -311,8 +334,11 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             for back_fk_data in getattr(data, field_name):
                 try:
                     await self.create(
-                        back_fk_data, exclude=back_fk_exclude, model=back_fk_model,
-                        defaults={back_fk_source_field: instance}
+                        back_fk_data,
+                        exclude=back_fk_exclude,
+                        model=back_fk_model,
+                        defaults={back_fk_source_field: instance},
+                        inside_transaction=True,
                     )
                 except MultipleFieldsError as e:
                     errors.add_errors(*e.with_prefix(field_name))
@@ -331,28 +357,27 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             request: Request = None,
             select_related: Sequence[str] = (),
             prefetch_related: Sequence[str] = (),
+            inside_transaction: bool = False
     ) -> TORTOISE_MODEL:
         model: Type[TORTOISE_MODEL] = item_id_or_instance.__class__ if isinstance(item_id_or_instance, BaseModel) \
             else self.model
-        fk_fields, bfk_fields, o2o_fields, bo2o_fields, m2m_fields = exclude_fk_o2o_bo2o_m2m(model, data)
+        fk_fields, bfk_fields, o2o_fields, bo2o_fields, m2m_fields = exclude_fk_bfk_o2o_bo2o_m2m(model, data)
         exclude_dict = get_exclude_dict(exclude or set())
-        should_exclude = {*exclude_dict['__root__'], *fk_fields, *bfk_fields, *o2o_fields, *bo2o_fields, *m2m_fields}
-        if isinstance(item_id_or_instance, BaseModel):
-            instance = item_id_or_instance
-        else:
-            instance = await self.get_one(
-                item_id_or_instance,
-                background_tasks=background_tasks,
-                request=request,
-                select_related=select_related,
-                prefetch_related=prefetch_related
-            )
         errors = MultipleFieldsError()
 
-        async with in_transaction():
-            if not_unique := await model.check_unique(data.dict(exclude=should_exclude, exclude_unset=True)):
+        async def get_changed_instance() -> TORTOISE_MODEL:
+            if isinstance(item_id_or_instance, BaseModel):
+                instance = item_id_or_instance
+            else:
+                instance = await self.get_one(
+                    item_id_or_instance,
+                    request=request,
+                    select_related=select_related,
+                    prefetch_related=prefetch_related
+                )
+            if not_unique := await model.check_unique(data.dict(include=model._meta.db_fields, exclude_unset=True)):
                 errors.add_errors(NotUnique(fields=not_unique))
-            await self.handle_edit(instance)(data, should_exclude=should_exclude, defaults=defaults)
+            await self.handle_edit(instance)(data, should_exclude=exclude_dict['__root__'], defaults=defaults)
             if o2o_fields:
                 try:
                     await self.edit_o2o(instance, o2o_fields, data, exclude_dict)
@@ -376,7 +401,19 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             if errors:
                 raise errors
             await self.save_m2m(instance, data, m2m_fields=m2m_fields)
-        return instance
+            return instance
+
+        if inside_transaction:
+            return await get_changed_instance()
+        else:
+            async with in_transaction():
+                changed_instance = await get_changed_instance()
+            return await self.get_one(
+                changed_instance.pk,
+                request=request,
+                select_related=select_related,
+                prefetch_related=prefetch_related,
+            )
 
     async def edit_o2o(
             self,
@@ -393,10 +430,20 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
             o2o_exclude = exclude_dict[field_name]
             try:
                 if o2o_instance is not None:
-                    await self.edit(o2o_instance, o2o_data, exclude=o2o_exclude)
+                    await self.edit(
+                        o2o_instance,
+                        o2o_data,
+                        exclude=o2o_exclude,
+                        inside_transaction=True,
+                    )
                 else:
                     o2o_model: Type[TORTOISE_MODEL] = instance._meta.fields_map[field_name].related_model
-                    await self.create(o2o_data, exclude=o2o_exclude, model=o2o_model)
+                    await self.create(
+                        o2o_data,
+                        exclude=o2o_exclude,
+                        model=o2o_model,
+                        inside_transaction=True,
+                    )
                     need_refetch.add(field_name)
             except MultipleFieldsError as e:
                 errors.add_errors(*e.with_prefix(field_name))
@@ -425,11 +472,19 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
                 .reference.model_field_name
             try:
                 if back_o2o_instance is not None:
-                    await self.edit(back_o2o_instance, back_o2o_data, exclude=back_o2o_exclude)
+                    await self.edit(
+                        back_o2o_instance,
+                        back_o2o_data,
+                        exclude=back_o2o_exclude,
+                        inside_transaction=True,
+                    )
                 else:
                     await self.create(
-                        back_o2o_data, exclude=back_o2o_exclude, model=back_o2o_model,
-                        defaults={back_o2o_source_field: instance}
+                        back_o2o_data,
+                        exclude=back_o2o_exclude,
+                        model=back_o2o_model,
+                        defaults={back_o2o_source_field: instance},
+                        inside_transaction=True,
                     )
                     need_refetch.add(field_name)
             except MultipleFieldsError as e:
@@ -471,11 +526,19 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
                         if not fk_instance:
                             not_found_fk.add(field_name)
                         else:
-                            await self.edit(fk_instance, back_fk_data, exclude=back_o2o_exclude)
+                            await self.edit(
+                                fk_instance,
+                                back_fk_data,
+                                exclude=back_o2o_exclude,
+                                inside_transaction=True,
+                            )
                     else:
                         await self.create(
-                            back_fk_data, exclude=back_o2o_exclude, model=back_fk_model,
-                            defaults={back_fk_source_field: instance}
+                            back_fk_data,
+                            exclude=back_o2o_exclude,
+                            model=back_fk_model,
+                            defaults={back_fk_source_field: instance},
+                            inside_transaction=True,
                         )
                         need_refetch.add(field_name)
                 except MultipleFieldsError as e:
@@ -551,11 +614,13 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
 
         async def base_handler(
                 data: CamelModel,
-                should_exclude: set[str] = None,
+                should_exclude: set[str],
                 defaults: dict[str, Any] = None,
         ) -> TORTOISE_MODEL:
-            data_dict = data.dict(exclude=should_exclude)
-            data_dict.update(defaults or {})
+            include_fields = model._meta.db_fields.difference(should_exclude)
+            data_dict = data.dict(include=include_fields)
+            if defaults is not None:
+                data_dict.update(defaults)
             return await model.create(**data_dict)
 
         self.create_handlers[model] = base_handler
@@ -568,13 +633,15 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
 
         async def base_handler(
                 data: CamelModel,
-                should_exclude: set[str] = None,
+                should_exclude: set[str],
                 defaults: dict[str, Any] = None,
         ) -> TORTOISE_MODEL:
-            data_dict = data.dict(exclude=should_exclude, exclude_unset=True)
-            data_dict.update(defaults or {})
+            include_fields = model._meta.db_fields.difference(should_exclude)
+            data_dict = data.dict(include=include_fields, exclude_unset=True)
+            if defaults is not None:
+                data_dict.update(defaults)
             instance.update_from_dict(data_dict)
-            await instance.save(force_update=True)
+            await instance.save(force_update=True, update_fields=list(data_dict.keys()))
             return instance
 
         self.edit_handlers[model] = base_handler
@@ -590,6 +657,9 @@ class TortoiseCRUDService(BaseCRUDService[PK, TORTOISE_MODEL]):
                 await rel.clear()
             await rel.add(*(await rel.remote_model.filter(pk__in=ids)))
         await instance.fetch_related(*m2m_fields)
+
+    def get_default_sort_fields(self) -> set[str]:
+        return {*self.opts.db_fields}
 
 
 def get_exclude_dict(fields: set[str]) -> dict[str, set[str]]:
@@ -611,7 +681,7 @@ def get_exclude_dict(fields: set[str]) -> dict[str, set[str]]:
     return exclude_dict
 
 
-def exclude_fk_o2o_bo2o_m2m(
+def exclude_fk_bfk_o2o_bo2o_m2m(
         model: Type[BaseModel], data: CamelModel
 ) -> tuple[set[str], set[str], set[str], set[str], set[str]]:
     opts = model._meta
@@ -630,3 +700,13 @@ def exclude_fields_from_data(data: CamelModel, *fields: str) -> set[str]:
         if field_name in data.__fields_set__:
             return_fields.add(field_name)
     return return_fields
+
+
+def get_qs_build_func(name: str, model: Type[TORTOISE_MODEL], obj: Any):
+    if obj is None:
+        return getattr(model, 'get_' + name)
+    else:
+        if callable(obj):
+            return obj
+        else:
+            return lambda path, method: obj

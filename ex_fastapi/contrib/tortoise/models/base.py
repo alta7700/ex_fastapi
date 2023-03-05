@@ -32,6 +32,16 @@ class BaseModel(DefaultModel):
     def get_queryset_prefetch_related(cls, path: str, method: str) -> set[str]:
         return set()
 
+    @classmethod
+    def get_queryset_annotate_fields(cls, path: str, method: str) -> dict[str, Any]:
+        return {}
+
+    @classmethod
+    def get_queryset_default_filters(cls, path: str, method: str) -> dict[str, Any]:
+        return {}
+
+
+
 
 def get_field_param(model: Type[BaseModel], field_name: str, field_param: str):
     return getattr(model._meta.fields_map[field_name], field_param)

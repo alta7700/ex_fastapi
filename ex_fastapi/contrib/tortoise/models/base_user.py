@@ -64,7 +64,7 @@ def get_random_tempcode() -> str:
 
 class BaseTempCode(BaseModel):
     id: int = fields.BigIntField(pk=True)
-    user = fields.OneToOneField(
+    user: UserWithPermissions | fields.OneToOneRelation[UserWithPermissions] = fields.OneToOneField(
         get_user_model_path(), related_name='temp_code', on_delete=fields.CASCADE
     )
     code: str = fields.CharField(max_length=TEMP_CODE_LEN, default=get_random_tempcode)

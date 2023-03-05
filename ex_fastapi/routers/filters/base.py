@@ -6,7 +6,7 @@ from ex_fastapi import lower_camel
 
 DB_QUERY_CLS = TypeVar('DB_QUERY_CLS')
 VALUE_TYPE = TypeVar('VALUE_TYPE')
-OPTS = TypeVar('OPTS', bound=TypedDict)
+OPTS = TypeVar('OPTS')
 VALIDATOR = TypeVar('VALIDATOR', bound="BaseFilterValidator")
 
 

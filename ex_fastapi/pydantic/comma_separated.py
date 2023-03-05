@@ -18,12 +18,7 @@ def CommaSeparatedOf(
         def transform_initial_str(x: list[str]):
             return x[0]
 
-    scheme_modifying = {
-        int: {'example': '1,2,3,4,5'},
-        str: {'example': 'abc,def,ghi'},
-        float: {'example': '1.45,123,45.6'},
-    }
-    modify = {**scheme_modifying.get(t, {'example': f'comma,separated,{t.__name__}'}), **(modify or {})}
+    modify = modify or {}
 
     class CommaSeparatedT(list[T]):
 

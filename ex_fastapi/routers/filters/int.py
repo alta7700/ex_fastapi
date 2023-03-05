@@ -16,9 +16,9 @@ class IntFilterValidator(BaseFilterValidator[IntFilterOpts], int):
     def validate(cls, v: str) -> Self:
         v = int(v)
         if cls.min_value is not None and v < cls.min_value:
-            raise ValueError(f'Значение меньше минимального ({cls.min_value})')
+            raise ValueError(f'The value is less than the minimum ({cls.min_value})')
         if cls.max_value is not None and v > cls.max_value:
-            raise ValueError(f'Значение больше максимального ({cls.max_value})')
+            raise ValueError(f'The value is greater than the maximum ({cls.max_value})')
         return cls(v)
 
     @classmethod

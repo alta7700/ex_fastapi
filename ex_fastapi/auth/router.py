@@ -155,13 +155,19 @@ def create_users_router(
             router.field_errors_response_example()
         ))
         async def edit_me(
+                request: Request,
                 response: Response,
                 background_tasks: BackgroundTasks,
                 user_repo: UserRepository = Depends(user_with_perms()),
                 data: get_schema(UserMeEdit) = Body(...),
         ):
             try:
-                user = await router.service.edit(user_repo.user, data, background_tasks=background_tasks)
+                user = await router.service.edit(
+                    user_repo.user,
+                    data,
+                    background_tasks=background_tasks,
+                    request=request,
+                )
             except MultipleFieldsError as e:
                 raise router.field_errors(e)
             return auth_provider.authorize(response, user)

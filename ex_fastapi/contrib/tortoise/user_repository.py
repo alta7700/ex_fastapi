@@ -34,8 +34,9 @@ class UserRepository(BaseUserRepository[USER_MODEL]):
             should_exclude: set[str] = None,
             defaults: dict[str, Any] = None,
     ) -> USER_MODEL:
-        data_dict = data.dict(exclude={'password', 're_password', *(should_exclude or set())})
-        data_dict.update(defaults or {})
+        data_dict = data.dict(include=cls.model._meta.db_fields.difference(should_exclude))
+        if defaults:
+            data_dict.update(defaults)
         self = cls(cls.model(**data_dict))
         self.set_password(data.password)
         await self.save(force_create=True)

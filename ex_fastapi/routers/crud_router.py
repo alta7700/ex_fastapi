@@ -12,8 +12,7 @@ from ex_fastapi.default_response import BgHTTPException
 from . import BaseCRUDService
 from .exceptions import ItemNotFound, FieldErrors, MultipleFieldsError
 from .filters import BaseFilter
-from .utils import pagination_factory, PAGINATION
-
+from .utils import pagination_factory, PAGINATION, get_filters, sort_factory
 
 DISPLAY_FIELDS = tuple[str, ...]
 SERVICE = TypeVar('SERVICE', bound=BaseCRUDService)
@@ -27,7 +26,9 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
     service: SERVICE
     max_items_get_many_routes: Optional[int]
     max_items_delete_many_routes: Optional[int]
-    filters: list[Type[BaseFilter]] | bool
+    filters: list[Type[BaseFilter]]
+    available_sort: set[str]
+    max_page_size: int | None
     auto_routes_dependencies: DEPENDENCIES
 
     def __init__(
@@ -38,7 +39,9 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             max_items_delete_many: int = 100,
             prefix: str = None,
             tags: Optional[list[str | Enum]] = None,
-            filters: list[Type[BaseFilter]] | bool = None,
+            filters: list[Type[BaseFilter]] = None,
+            available_sort: set[str] = None,
+            max_page_size: int | None = 100,
             auto_routes_dependencies: DEPENDENCIES = None,
             routes_kwargs: ROUTES_KWARGS = None,
             add_tree_routes: bool = False,
@@ -53,6 +56,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
             :param prefix                     префикс из APIRouter
             :param tags                       tags из APIRouter
             :param filters                    фильтры для get_all
+            :param available_sort             поля для сортировки для get_all
             :param auto_routes_dependencies   инъекции которые применяются для всех роутов, сгенерированных
                                               автоматически, если нужно для всех, не только автоматически
                                               сгенерированных, то нужно использовать dependencies
@@ -90,6 +94,8 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
         if filters is None:
             filters = []
         self.filters = filters
+        self.available_sort = available_sort or self.service.get_default_sort_fields()
+        self.max_page_size = max_page_size
 
         if complete_auto_routes:
             self.complete_auto_routes()
@@ -110,8 +116,8 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 background_tasks: BackgroundTasks,
                 request: Request,
                 response: Response,
-                pagination: PAGINATION = pagination_factory(),
-                sort: CommaSeparatedOf(str, wrapper=snake_case, in_query=True) = Query(None),
+                pagination: PAGINATION = pagination_factory(self.max_page_size),
+                sort: set[str] = Depends(sort_factory(self.available_sort)),
                 applied_filters: list[BaseFilter] = Depends(get_filters(filters))
         ):
             raise_if_error_in_filters(applied_filters)
@@ -426,13 +432,6 @@ def get_route_kwargs(
         if kwarg not in available_api_route_kwargs:
             del route_data[kwarg]
     return route_data
-
-
-def get_filters(filters: list[Type[BaseFilter]]):
-    def wrapper(request: Request) -> list[BaseFilter]:
-        qp = request.query_params
-        return [final_f for f in filters if (final_f := f.from_qs(qp))]
-    return wrapper
 
 
 def raise_if_error_in_filters(filters: list[BaseFilter]) -> None:

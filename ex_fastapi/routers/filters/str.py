@@ -25,7 +25,6 @@ class StrFilterValidator(BaseFilterValidator[StrFilterOpts], str):
     def __schema__(cls) -> dict[str, Any]:
         return {
             'type': 'string',
-            'example': 'Просто строка',
             'min_length': cls.min_length,
             'max_length': cls.max_length,
         }
@@ -37,3 +36,19 @@ class BaseStrFilter(BaseFilter[str, StrFilterOpts, StrFilterValidator]):
     @classmethod
     def describe(cls):
         return 'Обычный строковый фильтр, вводи строку'
+
+
+class BaseStrStartswithFilter(BaseStrFilter):
+    suffix = '__startswith'
+
+    @classmethod
+    def describe(cls):
+        return 'Строковое значение начинается с ... (С УЧЁТОМ регистра)'
+
+
+class BaseStrIstartswithFilter(BaseStrFilter):
+    suffix = '__istartswith'
+
+    @classmethod
+    def describe(cls):
+        return 'Строковое значение начинается с ... (БЕЗ УЧЁТА регистра)'
