@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-version = '0.1.0'
+version = '0.1.1'
 
 
 setup(
@@ -15,11 +15,11 @@ setup(
     package_data={'ex_fastapi': ['templates/*.html']},
 
     install_requires=[
-        'fastapi[all]==0.92.0',
-        'phonenumbers==8.13.6',
+        'fastapi[all]==0.94.0',
+        'phonenumbers==8.13.7',
         'passlib==1.7.4',
         'PyJWT==2.6.0',
-        'cryptography==39.0.1',
+        'cryptography==39.0.2',
     ],
 
     python_requires='>=3.11',

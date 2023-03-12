@@ -1,10 +1,10 @@
-fastapi[all]==0.92.0
+fastapi[all]==0.94.0
 tortoise-orm[asyncpg]==0.19.3
 aerich==0.7.1
-phonenumbers==8.13.6
+phonenumbers==8.13.7
 
 passlib==1.7.4
 PyJWT==2.6.0
-cryptography==39.0.1
+cryptography==39.0.2
 
 fastapi-mail==1.2.6
