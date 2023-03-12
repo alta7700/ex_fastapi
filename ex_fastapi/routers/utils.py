@@ -10,13 +10,17 @@ ROUTE = bool | dict[str, Any]
 PAGINATION = tuple[Optional[int], Optional[int]]
 
 
-def pagination_factory(max_limit: int | None) -> Any:
+def pagination_factory(max_limit: Optional[int], default_limit: Optional[int] = 50) -> Any:
     """
     Created the pagination dependency to be used in the router
     """
+
+    if max_limit and default_limit > max_limit:
+        default_limit = max_limit
+
     def pagination(
             skip: Optional[NonNegativeInt] = Query(None),
-            limit: Optional[int] = Query(None, ge=1, le=max_limit)
+            limit: Optional[int] = Query(default_limit, ge=1, le=max_limit)
     ) -> PAGINATION:
         return skip, limit
 

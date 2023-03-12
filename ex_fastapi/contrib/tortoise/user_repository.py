@@ -111,7 +111,6 @@ class UserRepository(BaseUserRepository[USER_MODEL]):
         has = True
         for model, perm_name in permissions:
             content_type_id = ContentType.get_by_name(model.__name__).id
-            print(content_type_id, perm_name)
             if (content_type_id, perm_name) not in user_perms:
                 has = False
                 break

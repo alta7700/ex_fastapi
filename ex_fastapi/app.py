@@ -15,7 +15,7 @@ class ExFastAPI(FastAPI):
             db_config: dict = None,
             **kwargs
     ) -> None:
-        kwargs.setdefault('swagger_ui_parameters', {"operationsSorter": "method"})
+        kwargs.setdefault('swagger_ui_parameters', {"operationsSorter": "method", "docExpansion": "none"})
         exception_handlers = kwargs.get('exception_handlers', {})
         kwargs['exception_handlers'] = {**default_exception_handlers, **exception_handlers}
         super().__init__(**kwargs)

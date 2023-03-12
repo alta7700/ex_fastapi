@@ -204,13 +204,14 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 data: create_schema = Body(...)
         ):
             try:
-                return read_schema.from_orm(await create(
+                instance = await create(
                     data,
                     background_tasks=background_tasks,
                     request=request,
-                ))
+                )
             except MultipleFieldsError as e:
                 raise self.field_errors(e)
+            return read_schema.from_orm(instance)
 
         return route
 
@@ -227,7 +228,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 data: edit_schema = Body(...)
         ):
             try:
-                item = await edit(
+                instance = await edit(
                     item_id,
                     data,
                     background_tasks=background_tasks,
@@ -237,7 +238,7 @@ class CRUDRouter(Generic[SERVICE], APIRouter):
                 raise self.not_found_error()
             except MultipleFieldsError as e:
                 raise self.field_errors(e)
-            return read_schema.from_orm(item)
+            return read_schema.from_orm(instance)
 
         return route
 

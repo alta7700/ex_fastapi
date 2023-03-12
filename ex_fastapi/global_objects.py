@@ -1,4 +1,3 @@
-from importlib import import_module
 from typing import Type, TYPE_CHECKING, Optional
 
 from pydantic.utils import import_string
@@ -120,7 +119,3 @@ def get_auth_provider() -> "AuthProvider":
                 }
             )
     return AUTH_PROVIDER
-
-
-def get_auth_dependencies():
-    return import_module(f'ex_fastapi.contrib.{get_settings("db_name")}.auth_dependencies')
