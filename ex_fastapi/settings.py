@@ -18,11 +18,8 @@ class Databases(Enum):
     tortoise = 'tortoise'
 
 
-if DEBUG:
-    class SettingsConfig(PydanticBaseSettings.Config):
-        env_file = '.env'
-else:
-    SettingsConfig = PydanticBaseSettings.Config
+class SettingsConfig(PydanticBaseSettings.Config):
+    env_file = '.env' if DEBUG else None
 
 try:
     from fastapi_mail import ConnectionConfig
@@ -30,7 +27,8 @@ try:
     class MailingConfig(ConnectionConfig):
         TEMPLATE_FOLDER: DirectoryPath = Path(__file__).parent / 'templates'
 
-        Config = SettingsConfig
+        class Config(SettingsConfig):
+            pass
 except ImportError:
     MailingConfig, ConnectionConfig = None, None
 
@@ -44,7 +42,8 @@ class BaseSettings(PydanticBaseSettings):
     REFRESH_TOKEN_LIFETIME: int = 10
     SITE: AnyHttpUrl = 'http://localhost:8000'
 
-    Config = SettingsConfig
+    class Config(SettingsConfig):
+        pass
 
     @property
     def access_token_lifetime(self) -> int:
